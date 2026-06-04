@@ -1,0 +1,15 @@
+# Environment variables (contains API keys)
+.env
+
+# Python Virtual Environment
+venv/
+ENV/
+env/
+
+# Python Cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
