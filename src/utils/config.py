@@ -314,42 +314,100 @@ def clean_and_parse_json(text: str) -> Any:
     """
     Cleans a text response by removing reasoning <think>...</think> blocks
     and extracting the JSON object or array content.
+
+    Handles common model output issues:
+    - <think> reasoning traces (Phi-4 reasoning models)
+    - Markdown code fences (```json ... ```)
+    - Invalid backslash escape sequences  (\\ in unexpected places)
+    - Truncated JSON (finish_reason=length)
+    - Surrounding prose before/after the JSON
     """
     import re
     import json
-    
-    # 1. Remove think block if present
+
+    # ── 1. Strip <think>...</think> blocks ────────────────────────────────────
     text_clean = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
-    
-    # 2. Find first '{' or '[' and last '}' or ']'
     text_clean = text_clean.strip()
-    
-    first_brace = text_clean.find('{')
+
+    # ── 2. Strip markdown code fences ─────────────────────────────────────────
+    text_clean = re.sub(r'^```(?:json)?\s*', '', text_clean, flags=re.MULTILINE)
+    text_clean = re.sub(r'\s*```$', '', text_clean, flags=re.MULTILINE)
+    text_clean = text_clean.strip()
+
+    # ── 3. Extract the outermost JSON object or array ─────────────────────────
+    first_brace   = text_clean.find('{')
     first_bracket = text_clean.find('[')
-    
+
     start_idx = -1
-    end_idx = -1
-    
+    is_object = False
+
     if first_brace != -1 and (first_bracket == -1 or first_brace < first_bracket):
         start_idx = first_brace
-        end_idx = text_clean.rfind('}')
+        is_object = True
     elif first_bracket != -1:
         start_idx = first_bracket
-        end_idx = text_clean.rfind(']')
-        
-    if start_idx == -1 or end_idx == -1 or end_idx < start_idx:
-        # Fallback to markdown code block stripping
-        content = text_clean
-        if content.startswith("```json"):
-            content = content[7:]
-        elif content.startswith("```"):
-            content = content[3:]
-        if content.endswith("```"):
-            content = content[:-3]
-        return json.loads(content.strip())
-        
-    json_str = text_clean[start_idx:end_idx+1]
-    return json.loads(json_str)
+        is_object = False
+
+    if start_idx != -1:
+        end_char = '}' if is_object else ']'
+        end_idx  = text_clean.rfind(end_char)
+        if end_idx >= start_idx:
+            text_clean = text_clean[start_idx:end_idx + 1]
+
+    # ── 4. Fix invalid escape sequences (\x where x is not a valid JSON escape)
+    # Valid JSON escapes: \" \\ \/ \b \f \n \r \t \uXXXX
+    def _fix_escapes(s: str) -> str:
+        result = []
+        i = 0
+        while i < len(s):
+            if s[i] == '\\' and i + 1 < len(s):
+                next_ch = s[i + 1]
+                if next_ch in ('"', '\\', '/', 'b', 'f', 'n', 'r', 't', 'u'):
+                    result.append(s[i])          # keep valid escape
+                else:
+                    result.append('\\\\')        # double it so it becomes a literal backslash
+                i += 1
+            else:
+                result.append(s[i])
+            i += 1
+        return ''.join(result)
+
+    text_clean = _fix_escapes(text_clean)
+
+    # ── 5. First attempt: direct parse ────────────────────────────────────────
+    try:
+        return json.loads(text_clean)
+    except json.JSONDecodeError as first_err:
+        pass
+
+    # ── 6. Second attempt: repair truncated JSON (model hit token limit) ──────
+    def _repair_truncated(s: str) -> str:
+        """Add missing closing brackets/braces for truncated output."""
+        depth_brace   = s.count('{') - s.count('}')
+        depth_bracket = s.count('[') - s.count(']')
+        # Close any open strings first
+        if s.count('"') % 2 != 0:
+            s += '"'
+        s += ']' * max(0, depth_bracket)
+        s += '}' * max(0, depth_brace)
+        return s
+
+    repaired = _repair_truncated(text_clean)
+    try:
+        return json.loads(repaired)
+    except json.JSONDecodeError:
+        pass
+
+    # ── 7. Third attempt: strip trailing commas (common model mistake) ─────────
+    no_trailing = re.sub(r',\s*([}\]])', r'\1', repaired)
+    try:
+        return json.loads(no_trailing)
+    except json.JSONDecodeError as final_err:
+        raise ValueError(
+            f"Could not parse JSON from model response after all repair attempts.\n"
+            f"Last error: {final_err}\n"
+            f"Text preview: {text[:300]}"
+        ) from final_err
 
 
 if __name__ == "__main__":
