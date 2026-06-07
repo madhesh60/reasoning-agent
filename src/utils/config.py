@@ -382,14 +382,40 @@ def clean_and_parse_json(text: str) -> Any:
 
     # ── 6. Second attempt: repair truncated JSON (model hit token limit) ──────
     def _repair_truncated(s: str) -> str:
-        """Add missing closing brackets/braces for truncated output."""
-        depth_brace   = s.count('{') - s.count('}')
-        depth_bracket = s.count('[') - s.count(']')
-        # Close any open strings first
-        if s.count('"') % 2 != 0:
+        """
+        Add missing closing brackets/braces for truncated JSON.
+        Tracks nesting depth with a stack, skips characters inside strings.
+        """
+        stack = []
+        in_string = False
+        escape_next = False
+        OPEN  = {'{': '}', '[': ']'}
+        CLOSE = {'}', ']'}
+
+        for ch in s:
+            if escape_next:
+                escape_next = False
+                continue
+            if ch == '\\' and in_string:
+                escape_next = True
+                continue
+            if ch == '"':
+                in_string = not in_string
+                continue
+            if in_string:
+                continue
+            if ch in OPEN:
+                stack.append(OPEN[ch])
+            elif ch in CLOSE and stack:
+                if stack[-1] == ch:
+                    stack.pop()
+
+        # If we ended inside a string, close it first
+        if in_string:
             s += '"'
-        s += ']' * max(0, depth_bracket)
-        s += '}' * max(0, depth_brace)
+
+        # Close remaining open structures in reverse order
+        s += ''.join(reversed(stack))
         return s
 
     repaired = _repair_truncated(text_clean)

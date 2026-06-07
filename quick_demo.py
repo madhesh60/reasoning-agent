@@ -20,6 +20,12 @@ import argparse
 from pathlib import Path
 from datetime import datetime
 
+# ── Fix Windows console encoding so Unicode symbols print correctly ────────────
+if sys.platform == "win32":
+    import io
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
+
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 from dotenv import load_dotenv
@@ -29,7 +35,7 @@ load_dotenv(ROOT / ".env")
 R="\033[0m"; BOLD="\033[1m"; B=BOLD; C="\033[96m"; G="\033[92m"
 Y="\033[93m"; RE="\033[91m"; BL="\033[94m"; M="\033[95m"; D="\033[2m"
 
-def hdr(t,c=C): print(f"\n{c}{B}{'─'*64}\n  {t}\n{'─'*64}{R}")
+def hdr(t,c=C): print(f"\n{c}{B}{'-'*64}\n  {t}\n{'-'*64}{R}")
 def ok(m):  print(f"  {G}✓{R}  {m}")
 def fail(m):print(f"  {RE}✗{R}  {m}")
 def info(m):print(f"  {D}→{R}  {m}")
@@ -284,7 +290,7 @@ async def main():
     p.add_argument("--only", choices=list(TESTS.keys()), help="Run only this test")
     args = p.parse_args()
 
-    hdr("Phi-4 Reasoning Multi-Agent — Quick Demo & Test Suite", C)
+    hdr("Phi-4 Reasoning Multi-Agent -- Quick Demo & Test Suite", C)
     info(f"Python  : {sys.version.split()[0]}")
     info(f"Root    : {ROOT}")
     info(f"Time    : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")

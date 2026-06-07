@@ -18,6 +18,12 @@ import os
 from pathlib import Path
 from datetime import datetime
 
+# ── Fix Windows console encoding to support Unicode output ─────────────────────
+if sys.platform == "win32":
+    import io
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
+
 # ── Bootstrap path ────────────────────────────────────────────────────────────
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
@@ -38,9 +44,9 @@ DIM    = "\033[2m"
 
 def hdr(text: str, color: str = CYAN):
     width = min(os.get_terminal_size().columns, 72) if hasattr(os, "get_terminal_size") else 72
-    print(f"\n{color}{BOLD}{'═' * width}{RESET}")
+    print(f"\n{color}{BOLD}{'=' * width}{RESET}")
     print(f"{color}{BOLD}  {text}{RESET}")
-    print(f"{color}{BOLD}{'═' * width}{RESET}")
+    print(f"{color}{BOLD}{'=' * width}{RESET}")
 
 def step(icon: str, label: str, detail: str = "", color: str = BLUE):
     ts = datetime.now().strftime("%H:%M:%S")
@@ -297,7 +303,7 @@ def _print_report_object(report, fmt: str):
     if report.sections:
         print(f"\n{BOLD}Report Sections:{RESET}")
         for s in report.sections:
-            print(f"\n  {CYAN}{BOLD}▶ {s.title}{RESET}")
+            print(f"\n  {CYAN}{BOLD}> {s.title}{RESET}")
             # Print up to 400 chars of each section
             content = s.content[:400].replace("\n", "\n    ")
             print(f"    {content}")
