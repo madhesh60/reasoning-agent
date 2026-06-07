@@ -26,7 +26,7 @@ from dotenv import load_dotenv
 load_dotenv(ROOT / ".env")
 
 # ── Terminal colours ──────────────────────────────────────────────────────────
-R="\033[0m"; B="\033[1m"; C="\033[96m"; G="\033[92m"
+R="\033[0m"; BOLD="\033[1m"; B=BOLD; C="\033[96m"; G="\033[92m"
 Y="\033[93m"; RE="\033[91m"; BL="\033[94m"; M="\033[95m"; D="\033[2m"
 
 def hdr(t,c=C): print(f"\n{c}{B}{'─'*64}\n  {t}\n{'─'*64}{R}")

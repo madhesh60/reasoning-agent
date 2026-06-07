@@ -182,93 +182,87 @@ class MCPWebSearchTool:
         return results
 
     async def _execute_azure_search(self, query: str, max_results: int) -> SearchResponse:
-        """Execute search using Azure AI Project Toolbox."""
+        """Execute search using Azure AI Project MCP Toolbox (azure-ai-projects SDK)."""
         import time
         start_time = time.time()
-        
+
         logger.info(
             "azure_toolbox_search_start",
             query=query[:50],
             project_endpoint=self.azure_project_endpoint,
             toolbox=self.azure_toolbox_name
         )
-        
+
         try:
-            from langchain_azure_ai.tools import AzureAIProjectToolbox
-            
-            toolbox = AzureAIProjectToolbox(
-                project_endpoint=self.azure_project_endpoint,
-                toolbox_name=self.azure_toolbox_name,
-                toolbox_version=self.azure_toolbox_version,
-                credential=self.azure_openai_api_key,
+            from azure.ai.projects import AIProjectClient
+            from azure.core.credentials import AzureKeyCredential
+
+            client = AIProjectClient(
+                endpoint=self.azure_project_endpoint,
+                credential=AzureKeyCredential(self.azure_openai_api_key),
             )
-            
-            tools = await toolbox.get_tools()
-            if not tools:
-                raise ValueError("No tools found in Azure AI Project Toolbox")
-                
-            web_search_tool = tools[0]
-            # Invoke the tool with search_query parameter
-            res = await web_search_tool.ainvoke({"search_query": query})
-            
-            # Parse results
-            results = []
-            if isinstance(res, list) and len(res) > 0 and "text" in res[0]:
-                text = res[0]["text"]
-                results = self._parse_azure_search_response(text, query)
-            elif isinstance(res, str):
-                results = self._parse_azure_search_response(res, query)
-            else:
-                # Fallback in case of unexpected format
-                results = [{
-                    "title": f"Web Search Summary: {query}",
-                    "url": "https://ai.azure.com",
-                    "snippet": str(res),
-                    "source": "Azure AI Web Search",
-                    "relevance_score": 1.0,
-                    "authority_score": 0.9
-                }]
-                
-            # Wrap as SearchResult objects
-            search_results = []
-            for r in results[:max_results]:
-                search_results.append(SearchResult(
-                    title=r["title"],
-                    url=r["url"],
-                    snippet=r["snippet"],
+
+            # Call the MCP toolbox via the connections API
+            # The toolbox exposes a Bing web search tool
+            with client:
+                connections = client.connections.list()
+                # Use the agent run API to call the web search toolbox
+                agent = client.agents.create_agent(
+                    model=None,  # not needed for tool-only calls
+                    name="web-search-runner",
+                    instructions="You are a web search assistant. Use the bing_grounding tool to search.",
+                    toolbox_name=self.azure_toolbox_name,
+                )
+                thread = client.agents.create_thread()
+                message = client.agents.create_message(
+                    thread_id=thread.id,
+                    role="user",
+                    content=f"Search for: {query}. Return the top {max_results} results as a plain text summary with titles and URLs.",
+                )
+                run = client.agents.create_and_process_run(
+                    thread_id=thread.id, agent_id=agent.id
+                )
+                messages = client.agents.list_messages(thread_id=thread.id)
+                # Get last assistant message
+                result_text = ""
+                for msg in messages:
+                    if msg.role == "assistant":
+                        result_text = msg.content[0].text.value if msg.content else ""
+                        break
+                # Cleanup
+                client.agents.delete_agent(agent.id)
+
+            results_raw = self._parse_azure_search_response(result_text, query) if result_text else []
+            search_results = [
+                SearchResult(
+                    title=r["title"], url=r["url"], snippet=r["snippet"],
                     source=r["source"],
-                    published_date=r.get("published_date"),
                     relevance_score=r.get("relevance_score", 0.8),
                     authority_score=r.get("authority_score", 0.8)
-                ))
-                
+                )
+                for r in results_raw[:max_results]
+            ]
+
             execution_time = (time.time() - start_time) * 1000
-            
-            logger.info(
-                "azure_toolbox_search_complete",
-                query=query[:50],
-                results_count=len(search_results),
-                execution_time_ms=execution_time
-            )
-            
+            logger.info("azure_toolbox_search_complete", query=query[:50],
+                        results_count=len(search_results), execution_time_ms=execution_time)
+
             return SearchResponse(
-                query=query,
-                results=search_results,
+                query=query, results=search_results,
                 total_results=len(search_results),
                 execution_time_ms=execution_time,
-                sources=list(set([r.source for r in search_results]))
+                sources=list(set(r.source for r in search_results))
             )
+
         except Exception as e:
             logger.error("azure_toolbox_search_error_falling_back", query=query[:50], error=str(e))
-            # Fall back to simulated results
             simulated = self._get_simulated_results(query, max_results)
             results = self._parse_search_results(simulated, query)
             return SearchResponse(
-                query=query,
-                results=results,
+                query=query, results=results,
                 total_results=len(results),
                 execution_time_ms=(time.time() - start_time) * 1000,
-                sources=list(set([r.source for r in results]))
+                sources=list(set(r.source for r in results))
             )
 
     async def search(
