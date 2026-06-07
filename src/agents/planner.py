@@ -53,7 +53,7 @@ class SubTask(BaseModel):
     description: str = Field(..., description="Detailed description of what needs to be done")
     priority: TaskPriority = Field(..., description="Task priority level")
     depends_on: list[str] = Field(default_factory=list, description="Task IDs this task depends on")
-    estimated_duration_seconds: int = Field(default=30, description="Estimated time to complete")
+    estimated_duration_seconds: float = Field(default=30, description="Estimated time to complete (accepts int or float)")
     agent: str = Field(..., description="Which agent should handle this task")
     output_format: str = Field(default="json", description="Expected output format")
     search_queries: list[str] = Field(default_factory=list, description="Search queries needed")
@@ -66,7 +66,7 @@ class ResearchPlan(BaseModel):
     original_query: str = Field(..., description="The original user query")
     intent_summary: str = Field(..., description="Summary of the intended outcome")
     total_tasks: int = Field(..., description="Total number of subtasks")
-    estimated_total_time_seconds: int = Field(..., description="Estimated total execution time")
+    estimated_total_time_seconds: float = Field(..., description="Estimated total execution time (float allowed)")
     tasks: list[SubTask] = Field(..., description="List of all subtasks")
     execution_order: list[str] = Field(..., description="Recommended execution order (task IDs)")
     required_tools: list[str] = Field(..., description="Tools needed for execution")
@@ -339,19 +339,17 @@ IMPORTANT: Return ONLY the JSON object, no additional text or explanation.
                     elif dep_str.replace("task_", "").isdigit():
                         depends_on.append(f"task_{int(dep_str.replace('task_', '')):03d}")
 
-            # Duration mapping
-            duration_val = t.get("estimated_duration_seconds", t.get("duration", 30))
+            # Duration mapping — accept floats (model sometimes outputs 1.5, 0.5, etc.)
+            duration_val = t.get("estimated_duration_seconds", t.get("duration", t.get("estimatedDuration", 30)))
             if isinstance(duration_val, str):
-                if duration_val.isdigit():
-                    duration = int(duration_val)
-                elif "day" in duration_val:
-                    duration = 120
-                else:
-                    duration = 30
+                try:
+                    duration = float(duration_val)
+                except ValueError:
+                    duration = 120.0 if "day" in duration_val else 30.0
             elif isinstance(duration_val, (int, float)):
-                duration = int(duration_val)
+                duration = float(duration_val)
             else:
-                duration = 30
+                duration = 30.0
 
             subtask = {
                 "task_id": task_id,
