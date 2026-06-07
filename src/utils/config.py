@@ -227,41 +227,46 @@ def validate_config(config: AppConfig) -> list[str]:
 
 
 # Centralized LLM Model Builder
-def get_chat_model(temperature: float = 0.3) -> Any:
+def get_chat_model(temperature: float = 0.3, max_tokens: int = 4000) -> Any:
     """
     Get a configured Chat Model (either ChatOpenAI or AzureChatOpenAI).
-    
+
     If the AZURE_OPENAI_ENDPOINT contains "services.ai.azure.com", "/openai/v1", or "/v1",
     it uses ChatOpenAI configured with standard OpenAI completions.
     Otherwise, it defaults to AzureChatOpenAI.
+
+    max_tokens: caps total output tokens. Critical for Phi-4 reasoning models which
+    can consume thousands of tokens in <think> blocks before outputting JSON.
     """
     from langchain_openai import ChatOpenAI, AzureChatOpenAI
-    
+
     config = get_azure_openai_config()
     endpoint = config["endpoint"]
     deployment = config["deployment"]
     api_key = config["api_key"]
     api_version = config["api_version"]
-    
+
     is_azure_ai_foundry = any(x in endpoint for x in ["services.ai.azure.com", "/openai/v1", "/v1"])
-    
+
     if is_azure_ai_foundry:
         # Base url should be stripped of /chat/completions if present
         base_url = endpoint
         if base_url.endswith("/chat/completions"):
             base_url = base_url[:-17]
-            
+
         logger.info(
             "instantiating_chat_openai_for_foundry",
             base_url=base_url,
             model=deployment,
-            temperature=temperature
+            temperature=temperature,
+            max_tokens=max_tokens
         )
         return ChatOpenAI(
             base_url=base_url,
             api_key=api_key,
             model=deployment,
             temperature=temperature,
+            max_tokens=max_tokens,
             timeout=120.0,  # Reasoning models can have high latency
         )
     else:
@@ -277,6 +282,7 @@ def get_chat_model(temperature: float = 0.3) -> Any:
             api_key=api_key,
             api_version=api_version,
             temperature=temperature,
+            max_tokens=max_tokens,
         )
 
 
@@ -325,8 +331,15 @@ def clean_and_parse_json(text: str) -> Any:
     import re
     import json
 
-    # ── 1. Strip <think>...</think> blocks ────────────────────────────────────
+    # ── 1. Strip <think>...</think> blocks (handles closed and unclosed) ────────
+    # Phi-4 reasoning models output potentially very long <think> blocks.
+    # Case A: block is properly closed with </think>
     text_clean = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
+    # Case B: block is never closed (model ran out of space thinking)
+    # In this case, strip from <think> to the end, then try from the start.
+    if '<think>' in text_clean:
+        think_start = text_clean.find('<think>')
+        text_clean = text_clean[:think_start]
     text_clean = text_clean.strip()
 
     # ── 2. Strip markdown code fences ─────────────────────────────────────────
@@ -428,12 +441,31 @@ def clean_and_parse_json(text: str) -> Any:
     no_trailing = re.sub(r',\s*([}\]])', r'\1', repaired)
     try:
         return json.loads(no_trailing)
-    except json.JSONDecodeError as final_err:
-        raise ValueError(
-            f"Could not parse JSON from model response after all repair attempts.\n"
-            f"Last error: {final_err}\n"
-            f"Text preview: {text[:300]}"
-        ) from final_err
+    except json.JSONDecodeError:
+        pass
+
+    # ── 8. Nuclear option: json-repair library (handles mid-stream corruption) ─
+    # json-repair is purpose-built for LLM outputs: missing commas, unclosed
+    # strings, unquoted keys, partial outputs, etc.
+    try:
+        import json_repair  # pip install json-repair
+        # Feed it the raw extracted JSON region (not the repaired one which may
+        # have introduced extra closings that confuse json-repair's own parser)
+        candidate = text_clean  # use pre-repair version
+        result = json_repair.repair_json(candidate, return_objects=True)
+        if isinstance(result, (dict, list)) and result:
+            logger.info("json_repair_succeeded", char_len=len(candidate))
+            return result
+    except ImportError:
+        logger.warning("json_repair_not_installed", msg="pip install json-repair to improve JSON robustness")
+    except Exception as repair_err:
+        logger.warning("json_repair_failed", error=str(repair_err))
+
+    raise ValueError(
+        f"Could not parse JSON from model response after all repair attempts.\n"
+        f"Last error: Expecting ',' delimiter\n"
+        f"Text preview: {text[:300]}"
+    )
 
 
 if __name__ == "__main__":

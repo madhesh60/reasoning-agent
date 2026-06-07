@@ -131,7 +131,9 @@ Always ensure the plan is:
         """Set up the language model from configuration."""
         if self.llm is None:
             from ..utils.config import get_chat_model
-            self.llm = get_chat_model(temperature=0.3)
+            # Use max_tokens=2000 to prevent Phi-4 from exhausting all tokens
+            # in its internal <think> block before producing the JSON output
+            self.llm = get_chat_model(temperature=0.3, max_tokens=2000)
         self.chain = self.llm
 
     async def decompose_task(self, query: str) -> ResearchPlan:
@@ -146,53 +148,85 @@ Always ensure the plan is:
         """
         logger.info("planner_decompose_task_start", query=query[:100])
 
-        prompt = f"""
-Analyze the following research query and create a detailed decomposition plan:
+        # Escape the query for safe embedding in JSON template
+        safe_query = query.replace('"', "'").replace("\\", "")
 
-QUERY: {query}
+        prompt = f"""You are a JSON generator. Output ONLY a single valid JSON object, nothing else.
+No markdown fences, no explanations, no text before or after the JSON.
 
-Your response must be a valid JSON object with this structure:
+Create a research decomposition plan for:
+QUERY: {safe_query}
+
+Rules for the JSON you output:
+- All string values must use only simple ASCII characters
+- Do NOT use apostrophes or double-quotes inside string values
+- Keep description fields SHORT (max 80 chars)
+- Keep reasoning field SHORT (max 100 chars)
+- Use EXACTLY these task_type values: web_search, document_analysis, data_extraction, comparative_analysis, risk_assessment, synthesis, fact_check, report_generation
+- Use EXACTLY these priority values: critical, high, medium, low
+- Use EXACTLY these agent values: Researcher, Analyst, Writer, Planner
+- estimated_duration_seconds must be an integer (e.g. 30, 60, 90)
+
+Output this exact JSON structure with 3-4 tasks:
 {{
-    "plan_id": "plan_001",
-    "original_query": "<the original query>",
-    "intent_summary": "<2-3 sentence summary of what the user wants to achieve>",
-    "total_tasks": <number of subtasks>,
-    "estimated_total_time_seconds": <estimated total time>,
-    "tasks": [
-        {{
-            "task_id": "task_001",
-            "task_type": "<one of: web_search, document_analysis, data_extraction, comparative_analysis, risk_assessment, synthesis, fact_check, report_generation>",
-            "description": "<detailed description of what this task accomplishes>",
-            "priority": "<critical|high|medium|low>",
-            "depends_on": ["<list of task_ids this depends on>"],
-            "estimated_duration_seconds": <time in seconds>,
-            "agent": "<Planner|Researcher|Analyst|Writer>",
-            "output_format": "<json|text|structured>",
-            "search_queries": ["<specific search queries if applicable>"],
-            "key_aspects": ["<key things to investigate or find>"]
-        }}
-    ],
-    "execution_order": ["task_001", "task_002", ...],
-    "required_tools": ["<list of tools needed>"],
-    "confidence_score": <0.0-1.0>,
-    "reasoning": "<explanation of how the plan was derived>"
+  "plan_id": "plan_001",
+  "original_query": "{safe_query[:80]}",
+  "intent_summary": "Research and analyze the query to produce a comprehensive report",
+  "total_tasks": 3,
+  "estimated_total_time_seconds": 120,
+  "tasks": [
+    {{
+      "task_id": "task_001",
+      "task_type": "web_search",
+      "description": "Search for recent information and data",
+      "priority": "high",
+      "depends_on": [],
+      "estimated_duration_seconds": 30,
+      "agent": "Researcher",
+      "output_format": "json",
+      "search_queries": ["search query here"],
+      "key_aspects": ["aspect 1", "aspect 2"]
+    }},
+    {{
+      "task_id": "task_002",
+      "task_type": "risk_assessment",
+      "description": "Analyze and assess the key risks",
+      "priority": "high",
+      "depends_on": ["task_001"],
+      "estimated_duration_seconds": 45,
+      "agent": "Analyst",
+      "output_format": "json",
+      "search_queries": [],
+      "key_aspects": ["probability", "impact", "mitigation"]
+    }},
+    {{
+      "task_id": "task_003",
+      "task_type": "report_generation",
+      "description": "Compile findings into structured report",
+      "priority": "medium",
+      "depends_on": ["task_001", "task_002"],
+      "estimated_duration_seconds": 45,
+      "agent": "Writer",
+      "output_format": "structured",
+      "search_queries": [],
+      "key_aspects": ["executive summary", "conclusions", "recommendations"]
+    }}
+  ],
+  "execution_order": ["task_001", "task_002", "task_003"],
+  "required_tools": ["web_search", "analysis"],
+  "confidence_score": 0.85,
+  "reasoning": "Standard 3-stage research pipeline"
 }}
 
-Consider:
-1. What information does the user need?
-2. What data sources should be consulted?
-3. What analysis is required?
-4. What is the logical flow from query to answer?
-5. Are there dependencies between tasks?
-6. What could go wrong and how to mitigate?
+Now create the actual plan for: {safe_query}
+Output ONLY the JSON, starting with {{ and ending with }}"""
 
-IMPORTANT: Return ONLY the JSON object, no additional text or explanation.
-"""
-
-        response = await self.chain.ainvoke([
-            SystemMessage(content=self.SYSTEM_PROMPT),
-            HumanMessage(content=prompt)
-        ])
+        response = await self.chain.ainvoke(
+            [
+                SystemMessage(content="You are a JSON generator. Output ONLY valid JSON, no other text."),
+                HumanMessage(content=prompt)
+            ]
+        )
 
         try:
             # Parse the response to extract the plan using clean_and_parse_json
@@ -229,7 +263,70 @@ IMPORTANT: Return ONLY the JSON object, no additional text or explanation.
 
         except Exception as e:
             logger.error("planner_json_parse_error", error=str(e), response=response.content[:200])
-            raise ValueError(f"Failed to parse planner response as JSON: {e}")
+            logger.warning("planner_using_fallback_plan", query=query[:80])
+            # Return a minimal fallback plan so the pipeline can continue
+            return self._create_fallback_plan(query)
+
+    def _create_fallback_plan(self, query: str) -> ResearchPlan:
+        """
+        Create a minimal but valid 3-task research plan as a fallback
+        when the model response cannot be parsed as JSON.
+        This ensures the pipeline can always continue.
+        """
+        from datetime import datetime
+        plan_id = f"plan_fallback_{datetime.utcnow().strftime('%H%M%S')}"
+        tasks = [
+            SubTask(
+                task_id="task_001",
+                task_type=TaskType.WEB_SEARCH,
+                description="Search for relevant information",
+                priority=TaskPriority.HIGH,
+                depends_on=[],
+                estimated_duration_seconds=30,
+                agent="Researcher",
+                output_format="json",
+                search_queries=[query],
+                key_aspects=["current data", "key facts", "recent trends"]
+            ),
+            SubTask(
+                task_id="task_002",
+                task_type=TaskType.RISK_ASSESSMENT,
+                description="Analyze findings and assess risks",
+                priority=TaskPriority.HIGH,
+                depends_on=["task_001"],
+                estimated_duration_seconds=45,
+                agent="Analyst",
+                output_format="json",
+                search_queries=[],
+                key_aspects=["probability", "impact", "confidence"]
+            ),
+            SubTask(
+                task_id="task_003",
+                task_type=TaskType.REPORT_GENERATION,
+                description="Compile findings into structured report",
+                priority=TaskPriority.MEDIUM,
+                depends_on=["task_001", "task_002"],
+                estimated_duration_seconds=30,
+                agent="Writer",
+                output_format="structured",
+                search_queries=[],
+                key_aspects=["executive summary", "conclusions", "recommendations"]
+            ),
+        ]
+        plan = ResearchPlan(
+            plan_id=plan_id,
+            original_query=query,
+            intent_summary=f"Research and analyze: {query[:100]}",
+            total_tasks=3,
+            estimated_total_time_seconds=105,
+            tasks=tasks,
+            execution_order=["task_001", "task_002", "task_003"],
+            required_tools=["web_search", "analysis"],
+            confidence_score=0.70,
+            reasoning="Fallback plan used — model response could not be parsed as JSON"
+        )
+        logger.info("planner_fallback_plan_created", plan_id=plan_id, query=query[:60])
+        return plan
 
     def _adapt_json_to_plan(self, data: Any, original_query: str) -> dict[str, Any]:
         """Adapt a custom or loose JSON planner response to match the ResearchPlan schema."""

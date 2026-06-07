@@ -21,6 +21,9 @@ pydantic-settings>=2.6.0
 # Environment configuration
 python-dotenv>=1.0.1
 
+# JSON repair for malformed LLM outputs (missing commas, unquoted keys, etc.)
+json-repair>=0.30.0
+
 # Logging
 structlog>=24.4.0
 
