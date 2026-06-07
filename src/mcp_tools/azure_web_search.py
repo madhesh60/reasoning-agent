@@ -44,12 +44,12 @@ _agent = None
 
 
 async def create_agent_with_toolbox():
-    """Create a LangGraph ReAct agent wired to the Foundry Bing toolbox."""
+    """Create a LangGraph ReAct agent wired to the Foundry Bing toolbox via MCP."""
     global _agent
 
     from langchain_openai import ChatOpenAI
-    from langchain_azure_ai.tools import AzureAIProjectToolbox
-    from langgraph.prebuilt import create_react_agent
+    from langchain_core.tools import Tool
+    import httpx
 
     print(f"[toolbox] Connecting to project  : {ENDPOINT}")
     print(f"[toolbox] Toolbox                : {TOOLBOX_NAME} v{TOOLBOX_VERSION}")
@@ -61,22 +61,49 @@ async def create_agent_with_toolbox():
         model=MODEL_DEPLOYMENT,
         temperature=0.3,
         timeout=120.0,
+        max_tokens=2000,
     )
 
-    toolbox = AzureAIProjectToolbox(
-        project_endpoint=ENDPOINT,
-        toolbox_name=TOOLBOX_NAME,
-        toolbox_version=TOOLBOX_VERSION,
-        credential=API_KEY,   # string key accepted by the SDK
+    # ── Build a web-search tool via the MCP toolbox endpoint ────────────────
+    mcp_url   = os.environ.get("MCP_SERVER_URL", "")
+    mcp_token = os.environ.get("MCP_AUTH_TOKEN", API_KEY)
+
+    async def _mcp_web_search(query: str) -> str:
+        """Call the Foundry MCP web-search toolbox."""
+        if not mcp_url:
+            return f"[web_search] MCP_SERVER_URL not set. Query was: {query}"
+        headers = {"Authorization": f"Bearer {mcp_token}", "Content-Type": "application/json"}
+        payload = {
+            "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+            "params": {"name": "bing_search", "arguments": {"query": query, "count": 5}}
+        }
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.post(mcp_url, json=payload, headers=headers)
+                resp.raise_for_status()
+                data = resp.json()
+                results = data.get("result", {}).get("content", [])
+                if isinstance(results, list):
+                    return "\n".join(
+                        r.get("text", str(r))[:500] for r in results[:5]
+                    )
+                return str(results)[:1000]
+        except Exception as e:
+            return f"[web_search error] {e}. Query: {query}"
+
+    web_search_tool = Tool(
+        name="bing_web_search",
+        description="Search the web using Bing via Azure AI Foundry MCP toolbox. Input: search query string.",
+        func=lambda q: asyncio.get_event_loop().run_until_complete(_mcp_web_search(q)),
+        coroutine=_mcp_web_search,
     )
-    tools = await toolbox.get_tools()
+    tools = [web_search_tool]
     print(f"[toolbox] Tools loaded           : {[t.name for t in tools]}")
 
-    for t in tools:
-        t.handle_tool_error = True
-
+    from langgraph.prebuilt import create_react_agent
     _agent = create_react_agent(llm, tools)
     return _agent
+
 
 
 async def call_agent_with_toolbox(query: str) -> str:

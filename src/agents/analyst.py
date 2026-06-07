@@ -20,7 +20,7 @@ from typing import Any, Literal
 from datetime import datetime
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import AzureChatOpenAI
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from enum import Enum
 import json
 import structlog
@@ -51,9 +51,36 @@ class AnalysisInsight(BaseModel):
     statement: str = Field(..., description="The insight statement")
     confidence: float = Field(..., description="Confidence in the insight (0-1)")
     evidence: list[str] = Field(default_factory=list, description="Supporting evidence")
-    evidence_strength: EvidenceStrength = Field(..., description="Strength of evidence")
+    evidence_strength: EvidenceStrength = Field(default=EvidenceStrength.MODERATE, description="Strength of evidence")
     caveats: list[str] = Field(default_factory=list, description="Limitations or conditions")
     source_count: int = Field(default=0, description="Number of sources supporting this")
+
+    @field_validator("evidence", "caveats", mode="before")
+    @classmethod
+    def coerce_list_to_str(cls, v):
+        """Convert list-of-dicts or mixed lists to list[str]."""
+        if not isinstance(v, list):
+            return [str(v)] if v else []
+        result = []
+        for item in v:
+            if isinstance(item, dict):
+                # extract text from common dict shapes
+                result.append(str(item.get("text") or item.get("value") or item.get("title") or next(iter(item.values()), "")))
+            elif item is not None:
+                result.append(str(item))
+        return result
+
+    @field_validator("evidence_strength", mode="before")
+    @classmethod
+    def coerce_evidence_strength(cls, v):
+        """Accept dict like {'value':'strong'} or any string."""
+        if isinstance(v, dict):
+            v = v.get("value") or v.get("strength") or next(iter(v.values()), "moderate")
+        if isinstance(v, str):
+            v = v.lower().strip()
+            mapping = {"strong": "strong", "moderate": "moderate", "weak": "weak", "anecdotal": "anecdotal"}
+            return mapping.get(v, "moderate")
+        return "moderate"
 
 
 class RiskAssessment(BaseModel):
@@ -71,21 +98,59 @@ class RiskAssessment(BaseModel):
     confidence: float = Field(..., description="Confidence in assessment (0-1)")
     data_quality_issues: list[str] = Field(default_factory=list, description="Data quality concerns")
 
+    @field_validator("factors", "mitigation", "evidence", "data_quality_issues", mode="before")
+    @classmethod
+    def coerce_list_to_str(cls, v):
+        """Convert list-of-dicts or mixed lists to list[str]."""
+        if not isinstance(v, list):
+            return [str(v)] if v else []
+        result = []
+        for item in v:
+            if isinstance(item, dict):
+                result.append(str(item.get("text") or item.get("value") or item.get("title") or next(iter(item.values()), "")))
+            elif item is not None:
+                result.append(str(item))
+        return result
+
+    @field_validator("level", mode="before")
+    @classmethod
+    def coerce_level(cls, v):
+        """Accept dict or any string for level."""
+        if isinstance(v, dict):
+            v = v.get("value") or v.get("level") or next(iter(v.values()), "medium")
+        if isinstance(v, str):
+            return v.lower().strip()
+        return "medium"
+
 
 class AnalysisResults(BaseModel):
     """Complete analysis results from research data."""
     analysis_id: str = Field(..., description="Unique identifier for this analysis")
     query: str = Field(..., description="Original research query")
     timestamp: str = Field(..., description="When analysis was performed")
-    key_findings: list[AnalysisInsight] = Field(..., description="Primary insights discovered")
-    risks_identified: list[RiskAssessment] = Field(..., description="Risks evaluated")
+    key_findings: list[AnalysisInsight] = Field(default_factory=list, description="Primary insights discovered")
+    risks_identified: list[RiskAssessment] = Field(default_factory=list, description="Risks evaluated")
     patterns_detected: list[str] = Field(default_factory=list, description="Patterns or trends identified")
     comparisons: dict[str, Any] = Field(default_factory=dict, description="Comparative analyses")
-    overall_confidence: float = Field(..., description="Overall confidence in analysis (0-1)")
+    overall_confidence: float = Field(default=0.5, description="Overall confidence in analysis (0-1)")
     reasoning_chain: list[str] = Field(default_factory=list, description="Steps in reasoning process")
     data_sources_analyzed: int = Field(default=0, description="Number of sources analyzed")
-    methodology: str = Field(..., description="Analysis methodology used")
+    methodology: str = Field(default="Multi-source analysis", description="Analysis methodology used")
     limitations: list[str] = Field(default_factory=list, description="Analysis limitations")
+
+    @field_validator("patterns_detected", "reasoning_chain", "limitations", mode="before")
+    @classmethod
+    def coerce_str_list(cls, v):
+        """Ensure list[str] — convert any dict items to their string representation."""
+        if not isinstance(v, list):
+            return [str(v)] if v else []
+        result = []
+        for item in v:
+            if isinstance(item, dict):
+                result.append(str(item.get("text") or item.get("value") or next(iter(item.values()), "")))
+            elif item is not None:
+                result.append(str(item))
+        return result
 
 
 class AnalystAgent:
@@ -100,43 +165,11 @@ class AnalystAgent:
     - Self-verification of conclusions
     """
 
-    SYSTEM_PROMPT = """You are the Analyst Agent in a multi-agent research system.
-Your role is to analyze research data, extract insights, identify patterns, and make reasoned assessments.
+    SYSTEM_PROMPT = """You are a JSON-output analyst. Think VERY briefly (3 sentences max), then output the JSON immediately.
 
-For each analysis task, you must:
-1. Examine the evidence thoroughly
-2. Identify patterns and correlations
-3. Evaluate risks and their dimensions
-4. Assess confidence in findings
-5. Explain your reasoning chain
-6. Acknowledge limitations and uncertainties
-7. Verify conclusions against evidence
+Your ONLY job: read the sources, extract insights and risks, return structured JSON.
+Do NOT write long reasoning. Do NOT repeat the question. Output JSON right after your brief think."""
 
-Analysis methodology:
-- Start with data examination
-- Identify key themes and patterns
-- Form hypotheses based on evidence
-- Test hypotheses against sources
-- Assess confidence levels
-- Synthesize conclusions
-- Self-verify findings
-
-Risk assessment dimensions:
-- Probability: How likely is this risk?
-- Impact: How severe would the consequences be?
-- Velocity: How quickly could it manifest?
-- Persistence: How long would effects last?
-- Recoverability: How easily can we recover?
-
-Always provide:
-- Clear reasoning chains
-- Evidence citations
-- Confidence scores
-- Acknowledgment of limitations
-- Consideration of alternatives
-
-Output format should always include structured reasoning steps.
-"""
 
     def __init__(self, llm: Any | None = None):
         """
@@ -342,64 +375,35 @@ Output format should always include structured reasoning steps.
             return self._create_fallback_analysis(query)
 
     def _create_analysis_prompt(self, query: str, sources: list, search_results: list) -> str:
-        """Create a structured prompt for analysis."""
-        # Prioritize sources as it contains rich dict metadata; fallback to search_results
+        """Create a compact prompt for analysis that fits in Phi-4-mini 4096 context."""
         items = sources if sources else search_results
+        # Each source gets max 100 chars to keep prompt short
         sources_text = "\n".join([
-            f"- {s.get('title', 'Unknown') if isinstance(s, dict) else s}: {s.get('snippet', 'No snippet available') if isinstance(s, dict) else 'No details'} (Source: {s.get('source_name', 'Unknown') if isinstance(s, dict) else 'Unknown'})"
-            for s in items[:10]
-        ])
+            f"{i+1}. {(s.get('title','?') if isinstance(s,dict) else str(s))[:50]}: {(s.get('snippet','') if isinstance(s,dict) else '')[:80]}"
+            for i, s in enumerate(items[:5])
+        ]) or "No sources provided."
 
-        return f"""
-Perform a comprehensive analysis of the following research data for the query:
-QUERY: {query}
+        return f"""Analyze for: {query[:100]}
 
-SOURCES AND DATA:
-{sources_text if sources_text else "No structured sources available. Analyze based on general knowledge."}
+Sources:
+{sources_text}
 
-Create a detailed JSON analysis with this structure:
+Output ONLY this JSON (keep all string values under 100 chars):
 {{
-    "key_findings": [
-        {{
-            "category": "<insight category>",
-            "statement": "<the insight statement>",
-            "confidence": <0.0-1.0>,
-            "evidence": ["<evidence 1>", "<evidence 2>"],
-            "evidence_strength": "<strong|moderate|weak|anecdotal>",
-            "caveats": ["<limitation or condition>"],
-            "source_count": <number of supporting sources>
-        }}
-    ],
-    "risks": [
-        {{
-            "risk_id": "risk_1",
-            "title": "<risk title>",
-            "description": "<detailed description>",
-            "level": "<critical|high|medium|low>",
-            "probability": <0.0-1.0>,
-            "impact": <0.0-1.0>,
-            "risk_score": <probability * impact>,
-            "factors": ["<contributing factor>"],
-            "mitigation": ["<mitigation strategy>"],
-            "evidence": ["<supporting evidence>"],
-            "confidence": <0.0-1.0>,
-            "data_quality_issues": ["<concern if any>"]
-        }}
-    ],
-    "patterns": ["<identified pattern or trend>"],
-    "comparisons": {{}},
-    "overall_confidence": <0.0-1.0>,
-    "reasoning_chain": [
-        "Step 1: Initial observation...",
-        "Step 2: Evidence examination...",
-        "Step 3: Pattern recognition...",
-        "Step 4: Conclusion..."
-    ],
-    "limitations": ["<analysis limitation>"]
+  "key_findings": [
+    {{"insight_id":"i1","category":"risk","statement":"Finding here","confidence":0.8,"evidence":["source 1"],"evidence_strength":"strong","caveats":[],"source_count":1}}
+  ],
+  "risks": [
+    {{"risk_id":"r1","title":"Risk title","description":"Risk description","level":"high","probability":0.7,"impact":0.8,"risk_score":0.56,"factors":["factor"],"mitigation":["action"],"evidence":["source"],"confidence":0.8,"data_quality_issues":[]}}
+  ],
+  "patterns": ["pattern 1"],
+  "comparisons": {{}},
+  "overall_confidence": 0.75,
+  "reasoning_chain": ["Observed X", "Concluded Y"],
+  "limitations": ["limited data"]
 }}
 
-IMPORTANT: Return ONLY the JSON object, no additional text. Focus on identifying the TOP risks and insights.
-"""
+Start with {{ and end with }}"""
 
     async def assess_risk(self, risk_data: dict[str, Any]) -> RiskAssessment:
         """
