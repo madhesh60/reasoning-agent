@@ -32,11 +32,23 @@ jobs:
           docker build -t ${{ env.ACR_NAME }}.azurecr.io/reasoning-agent:${{ github.sha }} -t ${{ env.ACR_NAME }}.azurecr.io/reasoning-agent:latest .
           docker push ${{ env.ACR_NAME }}.azurecr.io/reasoning-agent --all-tags
 
+      - name: Get ACR Credentials
+        id: get-acr-creds
+        run: |
+          ACR_USER=$(az acr credential show --name ${{ env.ACR_NAME }} --query username -o tsv)
+          ACR_PASS=$(az acr credential show --name ${{ env.ACR_NAME }} --query "passwords[0].value" -o tsv)
+          echo "::add-mask::$ACR_PASS"
+          echo "username=$ACR_USER" >> $GITHUB_OUTPUT
+          echo "password=$ACR_PASS" >> $GITHUB_OUTPUT
+
       - name: Deploy to Azure Container Apps
         uses: azure/container-apps-deploy-action@v1
         with:
           appSourcePath: ${{ github.workspace }}
           acrName: ${{ env.ACR_NAME }}
+          registryUrl: ${{ env.ACR_NAME }}.azurecr.io
+          registryUsername: ${{ steps.get-acr-creds.outputs.username }}
+          registryPassword: ${{ steps.get-acr-creds.outputs.password }}
           containerAppName: ${{ env.CONTAINER_APP_NAME }}
           resourceGroup: ${{ env.RESOURCE_GROUP }}
           imageToDeploy: ${{ env.ACR_NAME }}.azurecr.io/reasoning-agent:${{ github.sha }}
