@@ -47,12 +47,6 @@ class MCPConfig:
     auth_token: str | None
 
 
-@dataclass
-class A2AConfig:
-    """A2A protocol configuration."""
-    host: str
-    port: int
-    timeout: int
 
 
 @dataclass
@@ -76,7 +70,6 @@ class AppConfig:
     azure_openai: AzureOpenAIConfig
     azure_foundry: AzureFoundryConfig
     mcp: MCPConfig
-    a2a: A2AConfig
     agent: AgentConfig
     web_search: WebSearchConfig
     log_level: str
@@ -142,20 +135,6 @@ def get_mcp_config() -> dict[str, Any]:
     }
 
 
-def get_a2a_config() -> dict[str, Any]:
-    """
-    Get A2A protocol configuration from environment.
-
-    Returns:
-        Dictionary with A2A settings
-    """
-    return {
-        "host": os.getenv("A2A_HOST", "0.0.0.0"),
-        "port": int(os.getenv("A2A_PORT", "8080")),
-        "timeout": int(os.getenv("A2A_TIMEOUT", "30"))
-    }
-
-
 def get_agent_config() -> dict[str, Any]:
     """
     Get agent configuration from environment.
@@ -194,7 +173,6 @@ def get_app_config() -> AppConfig:
         azure_openai=AzureOpenAIConfig(**get_azure_openai_config()),
         azure_foundry=AzureFoundryConfig(**get_azure_foundry_config()),
         mcp=MCPConfig(**get_mcp_config()),
-        a2a=A2AConfig(**get_a2a_config()),
         agent=AgentConfig(**get_agent_config()),
         web_search=WebSearchConfig(**get_web_search_config()),
         log_level=os.getenv("LOG_LEVEL", "INFO")
@@ -306,13 +284,6 @@ def get_search_config() -> dict[str, Any]:
     }
 
 
-def get_a2a_client_config() -> dict[str, Any]:
-    """Get A2A client configuration."""
-    return {
-        "timeout": int(os.getenv("A2A_TIMEOUT", "30")),
-        "max_retries": int(os.getenv("AGENT_RETRY_ATTEMPTS", "3")),
-        "api_key": os.getenv("A2A_API_KEY")
-    }
 
 
 
@@ -495,10 +466,6 @@ if __name__ == "__main__":
     print(f"\nMCP Server:")
     print(f"  URL: {mcp_config['server_url']}")
 
-    a2a_config = get_a2a_config()
-    print(f"\nA2A Protocol:")
-    print(f"  Host: {a2a_config['host']}")
-    print(f"  Port: {a2a_config['port']}")
 
     agent_config = get_agent_config()
     print(f"\nAgent Settings:")

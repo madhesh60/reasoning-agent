@@ -4,7 +4,7 @@ from .config import (
     get_azure_openai_config,
     get_azure_foundry_config,
     get_mcp_config,
-    get_a2a_config,
+
     get_agent_config,
     get_web_search_config,
     get_app_config,
@@ -17,7 +17,7 @@ __all__ = [
     "get_azure_openai_config",
     "get_azure_foundry_config",
     "get_mcp_config",
-    "get_a2a_config",
+
     "get_agent_config",
     "get_web_search_config",
     "get_app_config",
