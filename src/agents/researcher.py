@@ -112,11 +112,13 @@ Output format should always include source URLs for verification.
         # _execute_azure_search() using the real Foundry toolbox.
         import os
         from ..mcp_tools.web_search import MCPWebSearchTool
-        from ..utils.config import get_mcp_config
+        from ..utils.config import get_mcp_config, get_search_config
         mcp_config = get_mcp_config()
+        search_config = get_search_config()
         self.mcp_tool = MCPWebSearchTool(
             mcp_server_url=mcp_config["server_url"],
             api_key=mcp_config["auth_token"],
+            timeout=search_config.get("timeout", 60),
             azure_project_endpoint=os.getenv("AZURE_PROJECT_ENDPOINT"),
             azure_toolbox_name=os.getenv("AZURE_TOOLBOX_NAME", "reasoning-agent-web-search"),
             azure_toolbox_version=os.getenv("AZURE_TOOLBOX_VERSION", "1"),

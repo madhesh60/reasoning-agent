@@ -158,63 +158,96 @@ Output should be structured JSON or Markdown as appropriate.
         """
         logger.info("writer_generate_report_start", query=query[:50], format=output_format.value, analysis_results_type=type(analysis_results).__name__)
         start_time = datetime.utcnow()
+        try:
+            if isinstance(analysis_results, list):
+                if len(analysis_results) > 0 and isinstance(analysis_results[0], dict):
+                    analysis_results = analysis_results[0]
+                else:
+                    analysis_results = {}
+            elif not isinstance(analysis_results, dict):
+                analysis_results = {}
 
-        if isinstance(analysis_results, str):
-            try:
-                analysis_results = json.loads(analysis_results)
-            except Exception as e:
-                logger.error("failed_to_parse_analysis_results_string", error=str(e))
+            if isinstance(analysis_results, str):
+                try:
+                    analysis_results = json.loads(analysis_results)
+                except Exception as e:
+                    logger.error("failed_to_parse_analysis_results_string", error=str(e))
 
-        # Extract key data
-        insights = analysis_results.get("key_findings", []) if isinstance(analysis_results, dict) else []
-        risks = analysis_results.get("risks_identified", []) if isinstance(analysis_results, dict) else []
-        patterns = analysis_results.get("patterns_detected", []) if isinstance(analysis_results, dict) else []
-        reasoning_chain = analysis_results.get("reasoning_chain", []) if isinstance(analysis_results, dict) else []
-        overall_confidence = analysis_results.get("overall_confidence", 0.5) if isinstance(analysis_results, dict) else 0.5
-        data_sources = analysis_results.get("data_sources_analyzed", 0) if isinstance(analysis_results, dict) else 0
+            # Extract key data
+            insights = analysis_results.get("key_findings", []) if isinstance(analysis_results, dict) else []
+            risks = analysis_results.get("risks_identified", []) if isinstance(analysis_results, dict) else []
+            patterns = analysis_results.get("patterns_detected", []) if isinstance(analysis_results, dict) else []
+            reasoning_chain = analysis_results.get("reasoning_chain", []) if isinstance(analysis_results, dict) else []
+            overall_confidence = analysis_results.get("overall_confidence", 0.5) if isinstance(analysis_results, dict) else 0.5
+            data_sources = analysis_results.get("data_sources_analyzed", 0) if isinstance(analysis_results, dict) else 0
 
-        # Generate report content using LLM
-        report_data = await self._generate_report_content(
-            query, insights, risks, patterns, reasoning_chain
-        )
+            # Generate report content using LLM
+            report_data = await self._generate_report_content(
+                query, insights, risks, patterns, reasoning_chain
+            )
 
-        # Build metadata
-        metadata = ReportMetadata(
-            report_id=f"report_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}",
-            title=report_data.get("title", f"Research Report: {query[:50]}..."),
-            query=query,
-            created_at=datetime.utcnow().isoformat(),
-            confidence_score=overall_confidence,
-            processing_time_seconds=(datetime.utcnow() - start_time).total_seconds(),
-            data_sources=data_sources,
-            agents_used=["Planner", "Researcher", "Analyst", "Writer"]
-        )
+            # Build metadata
+            metadata = ReportMetadata(
+                report_id=f"report_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}",
+                title=report_data.get("title", f"Research Report: {query[:50]}..."),
+                query=query,
+                created_at=datetime.utcnow().isoformat(),
+                confidence_score=overall_confidence,
+                processing_time_seconds=(datetime.utcnow() - start_time).total_seconds(),
+                data_sources=data_sources,
+                agents_used=["Planner", "Researcher", "Analyst", "Writer"]
+            )
 
-        # Build sections
-        sections = self._build_sections(report_data, risks)
+            # Build sections
+            sections = self._build_sections(report_data, risks)
 
-        # Create citations from sources
-        citations = self._build_citations(analysis_results.get("sources", []))
+            # Create citations from sources
+            citations = self._build_citations(analysis_results.get("sources", []))
 
-        report = GeneratedReport(
-            metadata=metadata,
-            executive_summary=report_data.get("executive_summary", ""),
-            sections=sections,
-            conclusions=report_data.get("conclusions", []),
-            recommendations=report_data.get("recommendations", []),
-            citations=citations,
-            appendices=report_data.get("appendices", []),
-            raw_data=analysis_results
-        )
+            report = GeneratedReport(
+                metadata=metadata,
+                executive_summary=report_data.get("executive_summary", ""),
+                sections=sections,
+                conclusions=report_data.get("conclusions", []),
+                recommendations=report_data.get("recommendations", []),
+                citations=citations,
+                appendices=report_data.get("appendices", []),
+                raw_data=analysis_results
+            )
 
-        logger.info(
-            "writer_generate_report_complete",
-            report_id=metadata.report_id,
-            sections=len(sections),
-            recommendations=len(report.recommendations)
-        )
+            logger.info(
+                "writer_generate_report_complete",
+                report_id=metadata.report_id,
+                sections=len(sections),
+                recommendations=len(report.recommendations)
+            )
 
-        return report
+            return report
+
+        except Exception as e:
+            logger.error("generate_report_exception", error=str(e))
+            fallback_data = self._create_fallback_report(query)
+            metadata = ReportMetadata(
+                report_id=f"report_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}",
+                title=fallback_data.get("title", f"Research Report: {query[:50]}..."),
+                query=query,
+                created_at=datetime.utcnow().isoformat(),
+                confidence_score=0.2,
+                processing_time_seconds=(datetime.utcnow() - start_time).total_seconds(),
+                data_sources=0,
+                agents_used=["Planner", "Researcher", "Analyst", "Writer"]
+            )
+            sections = self._build_sections(fallback_data, [])
+            return GeneratedReport(
+                metadata=metadata,
+                executive_summary=fallback_data.get("executive_summary", ""),
+                sections=sections,
+                conclusions=fallback_data.get("conclusions", []),
+                recommendations=fallback_data.get("recommendations", []),
+                citations=[],
+                appendices=[],
+                raw_data=analysis_results if isinstance(analysis_results, dict) else {}
+            )
 
     async def _generate_report_content(
         self,
@@ -227,42 +260,76 @@ Output should be structured JSON or Markdown as appropriate.
         """Generate structured report content using LLM."""
         # Convert insights and risks to text for the prompt
         insights_text = "\n".join([
-            f"- {i.get('statement', str(i))} (Confidence: {i.get('confidence', 0.5):.2f})"
-            for i in insights[:5]
+            f"- [{i.get('category', 'General')}] {i.get('statement', str(i))} (Evidence: {', '.join(i.get('evidence', []))})"
+            for i in insights[:10]
         ]) or "No key insights available."
 
         risks_text = "\n".join([
-            f"- {r.get('title', str(r))}: Level={r.get('level', 'unknown')}, Score={r.get('risk_score', 0):.2f}"
-            for r in risks[:5]
+            f"- {r.get('title', str(r))}: Level={r.get('level', 'unknown')}, Description={r.get('description', '')}, Mitigation={', '.join(r.get('mitigation', []))}"
+            for r in risks[:10]
         ]) or "No risks identified."
 
         patterns_text = "\n".join([f"- {p}" for p in patterns[:5]]) or "No patterns identified."
 
-        reasoning_text = "\n".join([f"{i+1}. {r}" for i, r in enumerate(reasoning_chain[:5])]) or "No reasoning chain available."
+        reasoning_text = "\n".join([f"{i+1}. {r}" for i, r in enumerate(reasoning_chain[:8])]) or "No reasoning chain available."
 
-        prompt = f"""Generate a research report JSON for this query: {query[:120]}
+        prompt = f"""You are the Writer Agent. Write a comprehensive, highly detailed investment/strategic research report to answer: {query}
 
-INSIGHTS:
-{insights_text[:400]}
+Use the following inputs as the factual basis:
 
-RISKS:
-{risks_text[:300]}
+KEY INSIGHTS:
+{insights_text}
 
-Return ONLY this JSON structure:
+IDENTIFIED RISKS:
+{risks_text}
+
+PATTERNS & TRENDS:
+{patterns_text}
+
+REASONING PATHWAY:
+{reasoning_text}
+
+Generate a structured JSON response. Replace all placeholder values in the template below with your actual, highly detailed, professional analysis. Do NOT use generic placeholder text like "Detailed findings here".
+
+JSON Schema to populate:
 {{
-  "title": "Report title here",
-  "executive_summary": "2 paragraph summary of findings",
+  "title": "Comprehensive Title for the Research Report",
+  "executive_summary": "A detailed 2-3 paragraph executive summary and investment thesis synthesizing the key findings, risks, and strategic takeaways...",
   "sections": [
-    {{"section_id": "findings", "title": "Key Findings", "content": "Detailed findings here", "data": {{}}, "sources": []}},
-    {{"section_id": "analysis", "title": "Risk Analysis", "content": "Risk analysis here", "data": {{}}, "sources": []}},
-    {{"section_id": "recommendations", "title": "Recommendations", "content": "Recommendations here", "data": {{}}, "sources": []}}
+    {{
+      "section_id": "market_landscape",
+      "title": "Market Landscape & Key Findings",
+      "content": "A highly detailed, professional, multi-paragraph section detailing findings, market trends, opportunities, and evidence...",
+      "data": {{}},
+      "sources": []
+    }},
+    {{
+      "section_id": "risk_analysis",
+      "title": "Comprehensive Risk Assessment",
+      "content": "A detailed analysis of identified risks, their strategic impact, and viability of proposed mitigations...",
+      "data": {{}},
+      "sources": []
+    }},
+    {{
+      "section_id": "strategic_outlook",
+      "title": "Strategic Outlook & Recommendations",
+      "content": "Actionable strategic and investment advice for decision makers, outlining the bull/bear case...",
+      "data": {{}},
+      "sources": []
+    }}
   ],
-  "conclusions": ["conclusion 1", "conclusion 2", "conclusion 3"],
-  "recommendations": ["recommendation 1", "recommendation 2"],
+  "conclusions": [
+    "Key conclusion 1 derived from research...",
+    "Key conclusion 2 derived from research..."
+  ],
+  "recommendations": [
+    "Specific, actionable recommendation 1...",
+    "Specific, actionable recommendation 2..."
+  ],
   "appendices": []
 }}
 
-Output ONLY the JSON, starting with {{ and ending with }}"""
+Return ONLY valid JSON. Start with {{ and end with }}"""
 
         response = await self.llm.ainvoke([
             SystemMessage(content=self.SYSTEM_PROMPT),
@@ -272,6 +339,15 @@ Output ONLY the JSON, starting with {{ and ending with }}"""
         try:
             from ..utils.config import clean_and_parse_json
             report_data = clean_and_parse_json(response.content)
+
+            if isinstance(report_data, list):
+                if len(report_data) > 0 and isinstance(report_data[0], dict):
+                    report_data = report_data[0]
+                else:
+                    report_data = self._create_fallback_report(query)
+            if not isinstance(report_data, dict):
+                report_data = self._create_fallback_report(query)
+
             return report_data
         except Exception as e:
             logger.error("writer_json_parse_error", error=str(e))
@@ -331,14 +407,41 @@ Output ONLY the JSON, starting with {{ and ending with }}"""
 
         # Add risks section if risks are available
         if risks:
-            risks_content = "\n".join([
-                f"**{r.get('title', f'Risk {i+1}')}**\n"
-                f"Level: {r.get('level', 'unknown').upper()}\n"
-                f"Risk Score: {r.get('risk_score', 0):.2f}\n"
-                f"Description: {r.get('description', 'No description available')}\n"
-                f"Mitigation: {', '.join(r.get('mitigation', ['No mitigation strategies identified'])[:3])}"
-                for i, r in enumerate(risks[:5])
-            ])
+            formatted_risks = []
+            for i, r in enumerate(risks[:5]):
+                if not isinstance(r, dict):
+                    # If it's a Pydantic object, convert to dict
+                    if hasattr(r, "model_dump"):
+                        r = r.model_dump()
+                    elif hasattr(r, "__dict__"):
+                        r = r.__dict__
+                    else:
+                        formatted_risks.append(f"**Risk {i+1}**: {str(r)}")
+                        continue
+                
+                title = r.get("title") or f"Risk {i+1}"
+                level = r.get("level")
+                level_str = str(level).upper() if level else "UNKNOWN"
+                try:
+                    score = float(r.get("risk_score", 0))
+                except (ValueError, TypeError):
+                    score = 0.0
+                desc = r.get("description") or "No description available"
+                mitigation = r.get("mitigation")
+                if isinstance(mitigation, list):
+                    mit_list = [str(m) for m in mitigation if m]
+                else:
+                    mit_list = ["No mitigation strategies identified"]
+                mit_str = ", ".join(mit_list[:3])
+                
+                formatted_risks.append(
+                    f"**{title}**\n"
+                    f"Level: {level_str}\n"
+                    f"Risk Score: {score:.2f}\n"
+                    f"Description: {desc}\n"
+                    f"Mitigation: {mit_str}"
+                )
+            risks_content = "\n\n".join(formatted_risks)
 
             sections.append(ReportSection(
                 section_id="risk_assessment",
@@ -368,14 +471,20 @@ Output ONLY the JSON, starting with {{ and ending with }}"""
         citations = []
 
         for i, source in enumerate(sources[:10], 1):
+            if not isinstance(source, dict):
+                if hasattr(source, "model_dump"):
+                    source = source.model_dump()
+                elif hasattr(source, "__dict__"):
+                    source = source.__dict__
+            
             if isinstance(source, dict):
                 citations.append({
                     "id": f"ref_{i}",
-                    "title": source.get("title", "Unknown Title"),
-                    "source": source.get("source_name", source.get("source", "Unknown Source")),
-                    "url": source.get("url", ""),
+                    "title": source.get("title") or "Unknown Title",
+                    "source": source.get("source_name") or source.get("source") or "Unknown Source",
+                    "url": source.get("url") or "",
                     "accessed": datetime.utcnow().isoformat(),
-                    "relevance": source.get("relevance_score", source.get("relevance", 0.5))
+                    "relevance": source.get("relevance_score") or source.get("relevance") or 0.5
                 })
             elif isinstance(source, str):
                 citations.append({

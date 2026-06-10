@@ -64,7 +64,7 @@ class MCPWebSearchTool:
         self,
         mcp_server_url: str = "https://mcp.ai.azure.com",
         api_key: str | None = None,
-        timeout: int = 15,
+        timeout: int = 60,
         azure_project_endpoint: str | None = None,
         azure_toolbox_name: str | None = None,
         azure_toolbox_version: str | None = None,
@@ -182,9 +182,10 @@ class MCPWebSearchTool:
         return results
 
     async def _execute_azure_search(self, query: str, max_results: int) -> SearchResponse:
-        """Execute search using Azure AI Project MCP Toolbox (HTTP JSON-RPC)."""
+        """Execute search using Azure AI Project MCP Toolbox (HTTP JSON-RPC) with retries."""
         import time
         import os
+        import asyncio
         start_time = time.time()
 
         logger.info(
@@ -208,8 +209,26 @@ class MCPWebSearchTool:
                 "params": {"name": "web_search", "arguments": {"search_query": query}}
             }
             
-            response = await self._client.post(mcp_url, json=payload, headers=headers)
-            response.raise_for_status()
+            # Retry loop with exponential backoff
+            max_attempts = 3
+            backoff_base = 2.0
+            response = None
+            for attempt in range(1, max_attempts + 1):
+                try:
+                    response = await self._client.post(mcp_url, json=payload, headers=headers)
+                    response.raise_for_status()
+                    break
+                except (httpx.HTTPError, httpx.TimeoutException) as e:
+                    logger.warning(
+                        "azure_toolbox_search_attempt_failed",
+                        attempt=attempt,
+                        max_attempts=max_attempts,
+                        error=str(e)
+                    )
+                    if attempt == max_attempts:
+                        raise e
+                    await asyncio.sleep(backoff_base ** attempt)
+
             data = response.json()
             
             # Extract content from MCP JSON-RPC response
@@ -264,15 +283,8 @@ class MCPWebSearchTool:
             )
 
         except Exception as e:
-            logger.error("azure_toolbox_search_error_falling_back", query=query[:50], error=str(e))
-            simulated = self._get_simulated_results(query, max_results)
-            results = self._parse_search_results(simulated, query)
-            return SearchResponse(
-                query=query, results=results,
-                total_results=len(results),
-                execution_time_ms=(time.time() - start_time) * 1000,
-                sources=list(set(r.source for r in results))
-            )
+            logger.error("azure_toolbox_search_error", query=query[:50], error=str(e))
+            raise e
 
     async def search(
         self,
@@ -359,21 +371,34 @@ class MCPWebSearchTool:
             )
 
     async def _execute_mcp_call(self, payload: dict[str, Any]) -> dict[str, Any]:
-        """Execute an MCP call to the server."""
+        """Execute an MCP call to the server with retries."""
         url = f"{self.mcp_server_url}/tools/web_search"
+        import asyncio
 
-        try:
-            response = await self._client.post(
-                url,
-                json=payload,
-                headers=self._build_headers()
-            )
-            response.raise_for_status()
-            return response.json()
-        except httpx.HTTPError as e:
-            logger.warning("mcp_server_unavailable", error=str(e))
-            # Return simulated results for demo
-            return self._get_simulated_results(payload["params"]["query"], payload["params"]["max_results"])
+        max_attempts = 3
+        backoff_base = 2.0
+        response = None
+        for attempt in range(1, max_attempts + 1):
+            try:
+                response = await self._client.post(
+                    url,
+                    json=payload,
+                    headers=self._build_headers()
+                )
+                response.raise_for_status()
+                break
+            except (httpx.HTTPError, httpx.TimeoutException) as e:
+                logger.warning(
+                    "mcp_server_call_attempt_failed",
+                    attempt=attempt,
+                    max_attempts=max_attempts,
+                    error=str(e)
+                )
+                if attempt == max_attempts:
+                    raise e
+                await asyncio.sleep(backoff_base ** attempt)
+
+        return response.json()
 
     def _parse_search_results(self, response: dict[str, Any], query: str) -> list[SearchResult]:
         """Parse search results from MCP response."""

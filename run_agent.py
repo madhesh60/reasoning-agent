@@ -113,7 +113,15 @@ async def run_model_test(model_override: str | None = None):
                 max_tokens=900,
             )
             msg = completion.choices[0].message
-            console.print(Panel(msg.content, title="Model Response", border_style="green"))
+            content_to_print = msg.content
+            if content_to_print is None:
+                # If there's no main content, show reasoning content or the finish reason
+                reasoning = getattr(msg, "reasoning_content", None) or getattr(msg, "reasoning", None)
+                if reasoning:
+                    content_to_print = f"[dim]Reasoning Trace:\n{reasoning}[/]\n\n[yellow]No final text content returned.[/]"
+                else:
+                    content_to_print = f"[yellow]No content returned (Finish Reason: {completion.choices[0].finish_reason})[/]"
+            console.print(Panel(content_to_print, title="Model Response", border_style="green"))
             ok(f"Finish reason : {completion.choices[0].finish_reason}")
             ok(f"Total tokens  : {completion.usage.total_tokens if completion.usage else 'N/A'}")
             return True
@@ -138,7 +146,7 @@ async def run_search_test():
         azure_openai_api_key=os.environ.get("AZURE_OPENAI_API_KEY"),
     )
 
-    query = "Latest AI research trends 2025"
+    query = "What is the market size and investment potential for computational linguistics and NLP software?"
     info(f"Search query: {query}")
 
     with console.status("[bold yellow]Searching the web...", spinner="dots"):
@@ -173,7 +181,7 @@ async def execute_workflow(query: str, model_override: str | None = None, stream
     load_environment()
 
     from src.orchestration.research_workflow import ResearchWorkflow
-    workflow = ResearchWorkflow(enable_a2a=True, enable_mcp=True, max_retries=2)
+    workflow = ResearchWorkflow(enable_a2a=False, enable_mcp=True, max_retries=2)
 
     STAGE_LABELS = {
         "plan":          "Planner: Decomposing query into sub-tasks...",

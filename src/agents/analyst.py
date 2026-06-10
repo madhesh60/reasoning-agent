@@ -228,6 +228,19 @@ Apply financial frameworks (e.g. SWOT, competitive analysis). Do NOT write long 
             from ..utils.config import clean_and_parse_json
             analysis_data = clean_and_parse_json(response.content)
 
+            if isinstance(analysis_data, list):
+                if len(analysis_data) > 0 and isinstance(analysis_data[0], dict):
+                    analysis_data = analysis_data[0]
+                else:
+                    analysis_data = {
+                        "key_findings": [
+                            {"insight_id": f"insight_{idx}", "category": "general", "statement": str(item), "confidence": 0.5, "evidence": [], "evidence_strength": "moderate", "caveats": [], "source_count": 1}
+                            for idx, item in enumerate(analysis_data)
+                        ]
+                    }
+            if not isinstance(analysis_data, dict):
+                analysis_data = {}
+
             # Build structured results with robust sanitization
             key_findings = []
             for i, f in enumerate(analysis_data.get("key_findings", [])):
@@ -377,33 +390,58 @@ Apply financial frameworks (e.g. SWOT, competitive analysis). Do NOT write long 
     def _create_analysis_prompt(self, query: str, sources: list, search_results: list) -> str:
         """Create a compact prompt for analysis that fits in Phi-4-mini 4096 context."""
         items = sources if sources else search_results
-        # Each source gets max 100 chars to keep prompt short
+        # Each source gets max 500 chars to keep prompt reasonable
         sources_text = "\n".join([
-            f"{i+1}. {(s.get('title','?') if isinstance(s,dict) else str(s))[:50]}: {(s.get('snippet','') if isinstance(s,dict) else '')[:80]}"
-            for i, s in enumerate(items[:5])
+            f"{i+1}. {(s.get('title','?') if isinstance(s,dict) else str(s))[:100]}: {(s.get('snippet','') if isinstance(s,dict) else '')[:400]}"
+            for i, s in enumerate(items[:8])
         ]) or "No sources provided."
 
-        return f"""Analyze for: {query[:100]}
+        return f"""Analyze the provided sources to answer: {query[:200]}
 
 Sources:
 {sources_text}
 
-Output ONLY this JSON (keep all string values under 100 chars):
+Based on these sources, perform a thorough strategic and risk analysis.
+Generate a structured JSON response. Replace the placeholder values in the template below with your actual synthesized findings and detailed analysis.
+
+JSON Schema to populate:
 {{
   "key_findings": [
-    {{"insight_id":"i1","category":"risk","statement":"Finding here","confidence":0.8,"evidence":["source 1"],"evidence_strength":"strong","caveats":[],"source_count":1}}
+    {{
+      "insight_id": "i1",
+      "category": "market/financial/regulatory/etc",
+      "statement": "Detailed analysis statement summarizing a key finding...",
+      "confidence": 0.85,
+      "evidence": ["Brief quote or specific data point from sources"],
+      "evidence_strength": "strong",
+      "caveats": ["Any limitations or conditions of this finding"],
+      "source_count": 1
+    }}
   ],
   "risks": [
-    {{"risk_id":"r1","title":"Risk title","description":"Risk description","level":"high","probability":0.7,"impact":0.8,"risk_score":0.56,"factors":["factor"],"mitigation":["action"],"evidence":["source"],"confidence":0.8,"data_quality_issues":[]}}
+    {{
+      "risk_id": "r1",
+      "title": "Descriptive risk title",
+      "description": "Thorough risk description detailing the threat...",
+      "level": "high",
+      "probability": 0.7,
+      "impact": 0.8,
+      "risk_score": 0.56,
+      "factors": ["Contributing factor 1", "Contributing factor 2"],
+      "mitigation": ["Actionable mitigation step 1", "Actionable mitigation step 2"],
+      "evidence": ["Source reference or data point supporting risk"],
+      "confidence": 0.8,
+      "data_quality_issues": []
+    }}
   ],
-  "patterns": ["pattern 1"],
+  "patterns": ["Detected trend or pattern 1", "Detected trend or pattern 2"],
   "comparisons": {{}},
   "overall_confidence": 0.75,
-  "reasoning_chain": ["Observed X", "Concluded Y"],
-  "limitations": ["limited data"]
+  "reasoning_chain": ["Step 1 of analytical logic", "Step 2 of analytical logic"],
+  "limitations": ["Data gap or limitation 1"]
 }}
 
-Start with {{ and end with }}"""
+Return ONLY valid JSON. Start with {{ and end with }}"""
 
     async def assess_risk(self, risk_data: dict[str, Any]) -> RiskAssessment:
         """

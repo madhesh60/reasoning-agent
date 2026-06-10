@@ -242,17 +242,23 @@ Output this exact JSON structure with 3-4 tasks:
 Now create the actual plan for: {safe_query}
 Output ONLY the JSON, starting with {{ and ending with }}"""
 
-        response = await self.chain.ainvoke(
-            [
-                SystemMessage(content="You are a JSON generator. Output ONLY valid JSON, no other text."),
-                HumanMessage(content=prompt)
-            ]
-        )
-
         try:
+            response = await self.chain.ainvoke(
+                [
+                    SystemMessage(content="You are a JSON generator. Output ONLY valid JSON, no other text."),
+                    HumanMessage(content=prompt)
+                ]
+            )
+
             # Parse the response to extract the plan using clean_and_parse_json
             from ..utils.config import clean_and_parse_json
             raw_data = clean_and_parse_json(response.content)
+            
+            if isinstance(raw_data, list):
+                if len(raw_data) > 0 and isinstance(raw_data[0], dict):
+                    raw_data = raw_data[0]
+                else:
+                    raise ValueError("Parsed raw_data is a list but does not contain a dictionary at index 0.")
             
             # Adapt the parsed data to match the expected schema if necessary
             plan_data = self._adapt_json_to_plan(raw_data, query)
