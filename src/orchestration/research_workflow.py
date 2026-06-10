@@ -177,12 +177,16 @@ class ResearchWorkflow:
                 query=state["query"],
                 limit=1
             )
+            past_context_str = None
             if past_memories:
                 logger.info("found_past_research_plan", memory_id=past_memories[0].key)
+                past_context_str = json.dumps(past_memories[0].value, indent=2)
+
             if self.enable_a2a and self.a2a_clients and "planner" in self.a2a_clients:
                 try:
                     logger.info("a2a_planner_decompose_task_start")
-                    prompt = f"Please decompose the following research query into tasks:\n\nQuery: {state['query']}\n\nRespond strictly with JSON matching the ResearchPlan schema."
+                    context_prompt = f"\nPAST CONTEXT FROM PREVIOUS RESEARCH:\n{past_context_str}\n(Use this to avoid redundant work and leverage known insights)\n" if past_context_str else ""
+                    prompt = f"Please decompose the following research query into tasks:\n\nQuery: {state['query']}{context_prompt}\n\nRespond strictly with JSON matching the ResearchPlan schema."
                     result = await self.a2a_clients["planner"].call_agent_json(prompt)
                     if result:
                         plan = ResearchPlan(**result)
@@ -190,7 +194,7 @@ class ResearchWorkflow:
                     logger.warning("a2a_planner_decompose_task_exception", error=str(e))
 
             if plan is None:
-                plan = await self.planner.decompose_task(state["query"])
+                plan = await self.planner.decompose_task(state["query"], past_context=past_context_str)
 
             # Update confidence tracking
             confidence_scores = state.get("confidence_scores", {})
@@ -492,16 +496,19 @@ class ResearchWorkflow:
                 )
 
             # Save the final report metadata to long-term memory
-            self.store.put(
-                ("research_plans",),
-                str(uuid.uuid4()),
-                {
-                    "query": state["query"],
-                    "report_id": report.metadata.report_id,
-                    "confidence_score": report.metadata.confidence_score,
-                    "conclusions": report.conclusions
-                }
-            )
+            if self.store:
+                self.store.put(
+                    ("research_plans",),
+                    str(uuid.uuid4()),
+                    {
+                        "query": state["query"],
+                        "report_id": report.metadata.report_id,
+                        "confidence_score": report.metadata.confidence_score,
+                        "executive_summary": report.executive_summary,
+                        "conclusions": report.conclusions,
+                        "recommendations": report.recommendations
+                    }
+                )
 
             return {
                 "report": report,
@@ -531,12 +538,13 @@ class ResearchWorkflow:
 
         return {"end_time": datetime.utcnow().isoformat()}
 
-    async def execute(self, query: str) -> dict[str, Any]:
+    async def execute(self, query: str, session_id: str | None = None) -> dict[str, Any]:
         """
         Execute the complete research-to-report workflow.
 
         Args:
             query: The research query to process
+            session_id: Optional session identifier for short-term memory continuity.
 
         Returns:
             Dictionary containing the final report and workflow metadata
@@ -563,7 +571,8 @@ class ResearchWorkflow:
 
         # Execute the workflow
         try:
-            config = {"configurable": {"thread_id": "demo_thread_123"}}
+            sid = session_id or str(uuid.uuid4())
+            config = {"configurable": {"thread_id": sid}}
             
             with SqliteStore.from_conn_string(self.store_db_path) as store:
                 store.setup()
@@ -615,12 +624,13 @@ class ResearchWorkflow:
                 "end_time": datetime.utcnow().isoformat()
             }
 
-    async def execute_streaming(self, query: str):
+    async def execute_streaming(self, query: str, session_id: str | None = None):
         """
         Execute workflow with streaming updates.
 
         Args:
             query: The research query to process
+            session_id: Optional session identifier for short-term memory continuity.
 
         Yields:
             Status updates as the workflow progresses
@@ -643,28 +653,37 @@ class ResearchWorkflow:
             "confidence_scores": {}
         }
 
-        # Stream through nodes
-        nodes = ["plan", "validate_plan", "research", "analyze", "competitive_analysis", "write_report"]
+        sid = session_id or str(uuid.uuid4())
+        config = {"configurable": {"thread_id": sid}}
 
-        for node in nodes:
-            yield {"stage": node, "status": "in_progress"}
+        with SqliteStore.from_conn_string(self.store_db_path) as store:
+            store.setup()
+            self.store = store
 
-            if node == "plan":
-                state = await self._plan_node(initial_state)
-            elif node == "validate_plan":
-                state = await self._validate_plan_node(state)
-            elif node == "research":
-                state = await self._research_node(state)
-            elif node == "analyze":
-                state = await self._analyze_node(state)
-            elif node == "write_report":
-                state = await self._write_report_node(state)
+            # Stream through nodes
+            nodes = ["plan", "validate_plan", "research", "analyze", "competitive_analysis", "write_report"]
 
-            if state.get("errors"):
-                yield {"stage": node, "status": "error", "errors": state["errors"]}
-                break
+            for node in nodes:
+                yield {"stage": node, "status": "in_progress"}
 
-            yield {"stage": node, "status": "completed", "state": state}
+                if node == "plan":
+                    state = await self._plan_node(initial_state)
+                elif node == "validate_plan":
+                    state = await self._validate_plan_node(state)
+                elif node == "research":
+                    state = await self._research_node(state)
+                elif node == "analyze":
+                    state = await self._analyze_node(state)
+                elif node == "write_report":
+                    state = await self._write_report_node(state)
+
+                if state.get("errors"):
+                    yield {"stage": node, "status": "error", "errors": state["errors"]}
+                    break
+
+                yield {"stage": node, "status": "completed", "state": state}
+
+            self.store = None
 
         yield {"stage": "complete", "status": "completed", "result": state}
 

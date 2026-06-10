@@ -153,12 +153,13 @@ Always ensure the plan is:
             self.llm = get_chat_model(temperature=0.3, max_tokens=2000)
         self.chain = self.llm
 
-    async def decompose_task(self, query: str) -> ResearchPlan:
+    async def decompose_task(self, query: str, past_context: str | None = None) -> ResearchPlan:
         """
         Decompose a complex query into a structured research plan.
 
         Args:
             query: The user's research query
+            past_context: Optional context from past long-term memories
 
         Returns:
             ResearchPlan with all subtasks and execution details
@@ -168,11 +169,14 @@ Always ensure the plan is:
         # Escape the query for safe embedding in JSON template
         safe_query = query.replace('"', "'").replace("\\", "")
 
+        context_str = f"\nPAST CONTEXT FROM PREVIOUS RESEARCH:\n{past_context}\n(Use this to avoid redundant work and leverage known insights)\n" if past_context else ""
+
         prompt = f"""You are a JSON generator. Output ONLY a single valid JSON object, nothing else.
 No markdown fences, no explanations, no text before or after the JSON.
 
 Create a research decomposition plan for:
 QUERY: {safe_query}
+{context_str}
 
 Rules for the JSON you output:
 - All string values must use only simple ASCII characters

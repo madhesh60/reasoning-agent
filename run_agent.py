@@ -162,7 +162,7 @@ async def run_search_test():
     await tool.close()
 
 # ── Full pipeline ─────────────────────────────────────────────────────────────
-async def execute_workflow(query: str, model_override: str | None = None, stream: bool = True):
+async def execute_workflow(query: str, model_override: str | None = None, stream: bool = True, session_id: str | None = None):
     hdr("Research Agent", "green")
     console.print(f"[bold]Query:[/] {query}")
 
@@ -187,7 +187,7 @@ async def execute_workflow(query: str, model_override: str | None = None, stream
         status = Status("[bold green]Initializing workflow...", spinner="dots")
         status.start()
         try:
-            async for update in workflow.execute_streaming(query):
+            async for update in workflow.execute_streaming(query, session_id=session_id):
                 stage  = update.get("stage", "unknown")
                 state_status = update.get("status", "")
                 
@@ -230,7 +230,7 @@ async def execute_workflow(query: str, model_override: str | None = None, stream
     else:
         with console.status("[bold cyan]Executing workflow... (this may take a minute)", spinner="dots"):
             t0 = datetime.utcnow()
-            result = await workflow.execute(query)
+            result = await workflow.execute(query, session_id=session_id)
             elapsed = (datetime.utcnow() - t0).total_seconds()
         _print_result(query, result, elapsed)
 
@@ -309,6 +309,9 @@ async def interactive_mode(stream: bool, model_override: str | None):
     hdr("Business & Investment Research Assistant", "blue")
     console.print("[dim]Type your research question, or 'exit' to quit.[/]")
     
+    import uuid
+    session_id = str(uuid.uuid4())
+    
     while True:
         try:
             query = Prompt.ask("\n[bold cyan]Query[/]")
@@ -330,7 +333,7 @@ async def interactive_mode(stream: bool, model_override: str | None):
             continue
 
         try:
-            await execute_workflow(query, model_override, stream=stream)
+            await execute_workflow(query, model_override, stream=stream, session_id=session_id)
         except Exception as e:
             err(f"Pipeline error: {e}")
 
