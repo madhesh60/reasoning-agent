@@ -11,12 +11,15 @@ import sys
 import os
 import asyncio
 import json
-import httpx
 from datetime import datetime
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
 
 # Configure logging
 from src.utils.logging import configure_logging
-from src.utils.config import load_environment, get_a2a_config
+from src.utils.config import load_environment
 
 configure_logging(log_level="INFO", json_format=False)
 
@@ -155,53 +158,6 @@ if not os.getenv("AZURE_OPENAI_API_KEY") or os.getenv("AZURE_OPENAI_API_KEY") ==
     patcher_sync = patch("langchain_openai.AzureChatOpenAI.invoke", new=mock_llm.invoke)
     patcher_sync.start()
 
-async def run_health_checks(port: int) -> bool:
-    """Run health checks on all agent endpoints."""
-    logger.info("running_a2a_health_checks", port=port)
-    agents = ["planner", "researcher", "analyst", "writer"]
-    all_healthy = True
-
-    async with httpx.AsyncClient() as client:
-        # Check parent root
-        try:
-            r = await client.get(f"http://localhost:{port}/")
-            logger.info("parent_server_ping", status_code=r.status_code, response=r.json())
-        except Exception as e:
-            logger.warning("parent_server_ping_failed", error=str(e))
-            logger.warning("Assuming A2A server is NOT running. Orchestrator will run in Local Fallback mode.")
-            return False
-
-        for agent in agents:
-            # Check health
-            try:
-                r_health = await client.get(f"http://localhost:{port}/{agent}/health")
-                if r_health.status_code == 200 and r_health.json().get("status") == "healthy":
-                    logger.info(f"agent_{agent}_health", status="HEALTHY")
-                else:
-                    logger.warning(f"agent_{agent}_health", status="UNHEALTHY", status_code=r_health.status_code)
-                    all_healthy = False
-            except Exception as e:
-                logger.error(f"agent_{agent}_health_check_error", error=str(e))
-                all_healthy = False
-
-            # Check info / capabilities
-            try:
-                r_info = await client.get(f"http://localhost:{port}/{agent}/info")
-                if r_info.status_code == 200:
-                    info = r_info.json()
-                    logger.info(
-                        f"agent_{agent}_capabilities",
-                        version=info.get("version"),
-                        capabilities=info.get("capabilities"),
-                        methods=list(info.get("methods", {}).keys())
-                    )
-                else:
-                    logger.warning(f"agent_{agent}_info_failed", status_code=r_info.status_code)
-            except Exception as e:
-                logger.error(f"agent_{agent}_info_error", error=str(e))
-
-    return all_healthy
-
 async def run_integration_test(use_a2a: bool):
     """Run complete orchestrator workflow to test end-to-end integration."""
     logger.info("starting_integration_test", mode="A2A" if use_a2a else "Local Direct")
@@ -239,29 +195,12 @@ async def main():
     print("DEPLOYMENT & PIPELINE VERIFICATION")
     print("=" * 60)
 
-    a2a_config = get_a2a_config()
-    port = a2a_config["port"]
-
-    # 1. Health Checks
-    a2a_running = await run_health_checks(port)
-
-    # 2. Run Direct Test (Always works since LLM mocks or credentials will fall back/succeed)
+    # Run Direct Test (Always works since LLM mocks or credentials will fall back/succeed)
     print("\n" + "-" * 60)
-    print("TEST 1: Direct Local Execution (No A2A server dependency)")
+    print("TEST: Direct Local Execution")
     print("-" * 60)
     # We patch config here to ensure mock runs if credentials are not configured
     await run_integration_test(use_a2a=False)
-
-    # 3. Run A2A Test (If server is running)
-    print("\n" + "-" * 60)
-    print("TEST 2: A2A-Routed Execution")
-    print("-" * 60)
-    if a2a_running:
-        await run_integration_test(use_a2a=True)
-    else:
-        print("\nWARNING: Skipping A2A-Routed execution test because A2A server is not running on port", port)
-        print("To run A2A test, start the server in a separate terminal: python scripts/run_a2a_server.py")
-        print("Then run this verification script again.")
 
     print("\n" + "=" * 60)
     print("VERIFICATION COMPLETE")

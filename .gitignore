@@ -20,3 +20,4 @@ scratch/
 tasks/
 walkthrough/
 *.log
+*.sqlite
