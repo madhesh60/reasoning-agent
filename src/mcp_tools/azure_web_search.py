@@ -75,7 +75,7 @@ async def create_agent_with_toolbox():
         headers = {"Authorization": f"Bearer {mcp_token}", "Content-Type": "application/json"}
         payload = {
             "jsonrpc": "2.0", "id": 1, "method": "tools/call",
-            "params": {"name": "bing_search", "arguments": {"query": query, "count": 5}}
+            "params": {"name": "web_search", "arguments": {"search_query": query}}
         }
         try:
             async with httpx.AsyncClient(timeout=30) as client:
@@ -124,11 +124,13 @@ async def create_agent_with_toolbox():
                 else:
                     messages.append(msg)
 
+            from datetime import datetime
+            today_str = datetime.now().strftime("%Y-%m-%d")
+            
             system_prompt = (
-                "You are a helpful assistant with access to the following tools:\n"
+                f"You are a helpful assistant with access to the following tools:\n"
                 + "\n".join([f"- {t.name}: {t.description}" for t in self.tools.values()])
-                + "\n\n"
-                "If the user asks you to search the web, gather information, or asks about recent events (like 2024/2025/2026), "
+                + f"\n\nToday's date is {today_str}. If the user asks you to search the web, gather information, or asks about recent/current events, "
                 "you MUST call the 'bing_web_search' tool first to retrieve the facts. Do not answer from your pre-trained knowledge directly without searching.\n\n"
                 "To use a tool, you MUST respond in this format (wrapped in a ```json code block):\n"
                 "```json\n"
@@ -281,4 +283,12 @@ async def main():
 
 
 if __name__ == "__main__":
+    import sys
+    from pathlib import Path
+    
+    # Add project root to python path so 'src' can be imported when running standalone
+    project_root = str(Path(__file__).resolve().parents[2])
+    if project_root not in sys.path:
+        sys.path.insert(0, project_root)
+        
     asyncio.run(main())

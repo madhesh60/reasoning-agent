@@ -200,9 +200,12 @@ Output format should always include source URLs for verification.
 
     async def _generate_search_queries(self, query: str) -> list[str]:
         """Generate multiple search queries for comprehensive coverage."""
+        today_str = datetime.now().strftime("%Y-%m-%d")
         prompt = f"""
 Generate 3-5 effective search queries for the following research topic.
 Each query should approach the topic from a different angle.
+
+Today's date is: {today_str}. If the topic implies current events or recent news, make sure your queries explicitly include the current year and month.
 
 TOPIC: {query}
 

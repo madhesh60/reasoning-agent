@@ -24,64 +24,47 @@ if sys.platform == "win32":
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
 
-# ── Bootstrap path ────────────────────────────────────────────────────────────
+# ── Bootstrap path & Configuration ────────────────────────────────────────────
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
 from dotenv import load_dotenv
 load_dotenv(ROOT / ".env")
 
-# ── Coloured terminal helpers (no deps) ──────────────────────────────────────
-RESET  = "\033[0m"
-BOLD   = "\033[1m"
-CYAN   = "\033[96m"
-GREEN  = "\033[92m"
-YELLOW = "\033[93m"
-RED    = "\033[91m"
-BLUE   = "\033[94m"
-MAGENTA= "\033[95m"
-DIM    = "\033[2m"
+# ── Suppress Warnings & Noisy Logs ────────────────────────────────────────────
+os.environ["LANGGRAPH_STRICT_MSGPACK"] = "true"
+import warnings
+warnings.filterwarnings("ignore")
 
-def hdr(text: str, color: str = CYAN):
-    width = min(os.get_terminal_size().columns, 72) if hasattr(os, "get_terminal_size") else 72
-    print(f"\n{color}{BOLD}{'=' * width}{RESET}")
-    print(f"{color}{BOLD}  {text}{RESET}")
-    print(f"{color}{BOLD}{'=' * width}{RESET}")
+from src.utils.logging import configure_logging
+configure_logging(log_level="WARNING", json_format=False)
+import logging
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("azure").setLevel(logging.WARNING)
 
-def step(icon: str, label: str, detail: str = "", color: str = BLUE):
-    ts = datetime.now().strftime("%H:%M:%S")
-    print(f"{DIM}[{ts}]{RESET} {color}{BOLD}{icon} {label}{RESET}  {DIM}{detail}{RESET}")
+# ── Rich UI Helpers ───────────────────────────────────────────────────────────
+from rich.console import Console
+from rich.panel import Panel
+from rich.text import Text
+from rich.markdown import Markdown
+from rich.status import Status
+from rich.prompt import Prompt
 
-def ok(msg: str):   print(f"  {GREEN}✓{RESET}  {msg}")
-def warn(msg: str): print(f"  {YELLOW}⚠{RESET}  {msg}")
-def err(msg: str):  print(f"  {RED}✗{RESET}  {msg}")
-def info(msg: str): print(f"  {DIM}→{RESET}  {msg}")
+console = Console()
+
+def hdr(text: str, color: str = "cyan"):
+    console.print(Panel(f"[bold {color}]{text}[/]", expand=False, border_style=color))
+
+def ok(msg: str):   console.print(f"  [bold green]✓[/] {msg}")
+def warn(msg: str): console.print(f"  [bold yellow]⚠[/] {msg}")
+def err(msg: str):  console.print(f"  [bold red]✗[/] {msg}")
+def info(msg: str): console.print(f"  [dim]→[/] {msg}")
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
 def parse_args():
     p = argparse.ArgumentParser(
         description="Phi-4 Reasoning Multi-Agent — Research-to-Report Runner",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  python run_agent.py
-      → Interactive mode: prompts you for a query
-
-  python run_agent.py --query "Top 3 risks in Indian EV market"
-      → Single query, full agent pipeline
-
-  python run_agent.py --query "..." --model phi-4-reasoning
-      → Use the larger Phi-4 model
-
-  python run_agent.py --model-test
-      → Only test Azure Foundry model connection
-
-  python run_agent.py --search-test
-      → Only test MCP web search tool
-
-  python run_agent.py --stream
-      → Interactive mode with streaming stage-by-stage output
-        """,
     )
     p.add_argument("--query", "-q", help="Research query to process")
     p.add_argument("--model", "-m", default=None,
@@ -98,7 +81,7 @@ Examples:
 
 # ── Model connection test ─────────────────────────────────────────────────────
 async def run_model_test(model_override: str | None = None):
-    hdr("Azure AI Foundry — Model Connection Test", CYAN)
+    hdr("Azure AI Foundry — Model Connection Test", "cyan")
 
     endpoint = os.environ.get("AZURE_OPENAI_ENDPOINT", "")
     api_key  = os.environ.get("AZURE_OPENAI_API_KEY", "")
@@ -108,48 +91,39 @@ async def run_model_test(model_override: str | None = None):
         err("AZURE_OPENAI_ENDPOINT or AZURE_OPENAI_API_KEY not set in .env")
         return False
 
-    # Strip /chat/completions if accidentally left in
     if endpoint.endswith("/chat/completions"):
         endpoint = endpoint[:-len("/chat/completions")]
 
-    step("🔌", "Connecting to endpoint:", endpoint, CYAN)
-    step("🤖", "Using deployment   :", deploy, CYAN)
+    info(f"Connecting to endpoint: {endpoint}")
+    info(f"Using deployment: {deploy}")
 
     from openai import OpenAI
     client = OpenAI(base_url=endpoint, api_key=api_key)
 
     messages = [
-        {"role": "system", "content": (
-            "You are a concise reasoning assistant. "
-            "Think step by step, show your reasoning, then give a short answer."
-        )},
-        {"role": "user", "content": (
-            "What are the top 3 investment risks in the Indian EV market? "
-            "Think step-by-step then give a short bullet-point answer."
-        )},
+        {"role": "system", "content": "You are a concise reasoning assistant."},
+        {"role": "user", "content": "What are the top 3 investment risks in the Indian EV market? Give a short answer."},
     ]
 
-    step("📤", "Sending test prompt …", "", YELLOW)
-    try:
-        completion = client.chat.completions.create(
-            model=deploy,
-            messages=messages,
-            max_tokens=900,
-        )
-        msg = completion.choices[0].message
-        print(f"\n{GREEN}{BOLD}── Model Response ──────────────────────────────────{RESET}")
-        print(msg.content)
-        print(f"{GREEN}{BOLD}────────────────────────────────────────────────────{RESET}")
-        ok(f"Finish reason : {completion.choices[0].finish_reason}")
-        ok(f"Total tokens  : {completion.usage.total_tokens if completion.usage else 'N/A'}")
-        return True
-    except Exception as e:
-        err(f"Model call failed: {e}")
-        return False
+    with console.status("[bold yellow]Sending test prompt...", spinner="dots"):
+        try:
+            completion = client.chat.completions.create(
+                model=deploy,
+                messages=messages,
+                max_tokens=900,
+            )
+            msg = completion.choices[0].message
+            console.print(Panel(msg.content, title="Model Response", border_style="green"))
+            ok(f"Finish reason : {completion.choices[0].finish_reason}")
+            ok(f"Total tokens  : {completion.usage.total_tokens if completion.usage else 'N/A'}")
+            return True
+        except Exception as e:
+            err(f"Model call failed: {e}")
+            return False
 
 # ── MCP web-search test ───────────────────────────────────────────────────────
 async def run_search_test():
-    hdr("MCP / Azure Foundry — Web Search Tool Test", MAGENTA)
+    hdr("MCP / Azure Foundry — Web Search Tool Test", "magenta")
 
     project_ep = os.environ.get("AZURE_PROJECT_ENDPOINT", "")
     if not project_ep:
@@ -165,28 +139,32 @@ async def run_search_test():
     )
 
     query = "Latest AI research trends 2025"
-    step("🔍", "Search query:", query, YELLOW)
+    info(f"Search query: {query}")
 
-    response = await tool.search(query, max_results=5)
+    with console.status("[bold yellow]Searching the web...", spinner="dots"):
+        response = await tool.search(query, max_results=5)
 
-    print(f"\n{BLUE}{BOLD}── Search Results ──────────────────────────────────{RESET}")
-    print(f"  Query          : {response.query}")
-    print(f"  Results found  : {response.total_results}")
-    print(f"  Execution time : {response.execution_time_ms:.0f} ms")
+    console.print(Panel(
+        f"[bold]Query:[/] {response.query}\n"
+        f"[bold]Results found:[/] {response.total_results}\n"
+        f"[bold]Execution time:[/] {response.execution_time_ms:.0f} ms",
+        title="Search Results", border_style="blue"
+    ))
+    
     for i, r in enumerate(response.results, 1):
-        print(f"\n  {CYAN}{i}. {r.title}{RESET}")
-        print(f"     Source    : {r.source}")
-        print(f"     URL       : {r.url}")
-        print(f"     Relevance : {r.relevance_score:.2f}")
+        console.print(f"\n  [bold cyan]{i}. {r.title}[/]")
+        console.print(f"     [dim]Source:[/] {r.source}")
+        console.print(f"     [dim]URL:[/] {r.url}")
         snippet = r.snippet[:120].replace("\n", " ")
-        print(f"     Snippet   : {DIM}{snippet}…{RESET}")
-    print(f"{BLUE}{BOLD}────────────────────────────────────────────────────{RESET}\n")
+        console.print(f"     [dim]Snippet:[/] {snippet}…")
+    
+    console.print("")
     await tool.close()
 
-# ── Full pipeline (streaming) ─────────────────────────────────────────────────
-async def run_streaming(query: str, model_override: str | None = None):
-    hdr(f"Research Agent — Streaming Mode", GREEN)
-    info(f"Query: {query}")
+# ── Full pipeline ─────────────────────────────────────────────────────────────
+async def execute_workflow(query: str, model_override: str | None = None, stream: bool = True):
+    hdr("Research Agent", "green")
+    console.print(f"[bold]Query:[/] {query}")
 
     if model_override:
         os.environ["AZURE_OPENAI_DEPLOYMENT"] = model_override
@@ -197,202 +175,152 @@ async def run_streaming(query: str, model_override: str | None = None):
     from src.orchestration.research_workflow import ResearchWorkflow
     workflow = ResearchWorkflow(enable_a2a=True, enable_mcp=True, max_retries=2)
 
-    STAGE_ICONS = {
-        "plan":          ("📋", "Planner Agent   — decomposing query into sub-tasks …",   CYAN),
-        "validate_plan": ("✅", "Validator       — checking plan quality …",               YELLOW),
-        "research":      ("🔍", "Researcher Agent — executing web searches …",             BLUE),
-        "analyze":       ("🧠", "Analyst Agent   — extracting insights & risks …",         MAGENTA),
-        "write_report":  ("📝", "Writer Agent    — generating structured report …",        GREEN),
-        "complete":      ("🏁", "Pipeline complete",                                       GREEN),
-        "error":         ("💥", "Error in stage",                                          RED),
+    STAGE_LABELS = {
+        "plan":          "Planner: Decomposing query into sub-tasks...",
+        "validate_plan": "Validator: Checking plan quality...",
+        "research":      "Researcher: Executing web searches...",
+        "analyze":       "Analyst: Extracting insights & risks...",
+        "write_report":  "Writer: Generating structured report...",
     }
 
-    async for update in workflow.execute_streaming(query):
-        stage  = update.get("stage", "unknown")
-        status = update.get("status", "")
-        icon, label, color = STAGE_ICONS.get(stage, ("⚙️", stage, DIM))
-
-        if status == "in_progress":
-            step(icon, label, "", color)
-        elif status == "completed" and stage != "complete":
-            ok(f"{label.split('—')[0].strip()} done")
-        elif stage == "complete":
-            state = update.get("result", {})
-            _print_report(query, state)
-        elif status == "error":
-            for e in update.get("errors", []):
-                err(str(e))
-
-# ── Full pipeline (non-streaming) ─────────────────────────────────────────────
-async def run_query(query: str, model_override: str | None, fmt: str):
-    hdr(f"Research-to-Report Multi-Agent  ·  Phi-4 Reasoning", GREEN)
-    info(f"Query : {query}")
-    if model_override:
-        info(f"Model : {model_override}")
-        os.environ["AZURE_OPENAI_DEPLOYMENT"] = model_override
-
-    from src.utils.config import load_environment
-    load_environment()
-
-    step("📋", "PLANNER       — breaking query into sub-tasks …",  "", CYAN)
-    step("🔍", "RESEARCHER    — web search will run next …",         "", BLUE)
-    step("🧠", "ANALYST       — reasoning & insight extraction …",   "", MAGENTA)
-    step("📝", "WRITER        — report generation …",                "", GREEN)
-    print(f"  {DIM}(all four agents running sequentially via LangGraph){RESET}\n")
-
-    from src.orchestration.research_workflow import ResearchWorkflow
-    workflow = ResearchWorkflow(enable_a2a=True, enable_mcp=True, max_retries=2)
-
-    t0 = datetime.utcnow()
-    result = await workflow.execute(query)
-    elapsed = (datetime.utcnow() - t0).total_seconds()
-
-    _print_result(query, result, fmt, elapsed)
+    if stream:
+        status = Status("[bold green]Initializing workflow...", spinner="dots")
+        status.start()
+        try:
+            async for update in workflow.execute_streaming(query):
+                stage  = update.get("stage", "unknown")
+                state_status = update.get("status", "")
+                
+                if state_status == "in_progress":
+                    label = STAGE_LABELS.get(stage, f"Processing {stage}...")
+                    status.update(f"[bold cyan]{label}")
+                elif state_status == "completed" and stage != "complete":
+                    if stage == "validate_plan":
+                        status.stop()
+                        state_data = update.get("state", {})
+                        plan = state_data.get("plan")
+                        if plan:
+                            console.print(Panel(
+                                "\n".join(f"[bold cyan]{i+1}.[/] {t.description} [dim]({t.agent})[/]" for i, t in enumerate(plan.tasks)),
+                                title="[bold magenta]Proposed Research Plan[/]",
+                                border_style="magenta"
+                            ))
+                        
+                        console.print("\n[bold yellow]Allow running this research plan?[/]")
+                        console.print("  [green]1.[/] Yes, allow this time")
+                        console.print("  [red]2.[/] No (abort workflow)")
+                        
+                        choice = Prompt.ask("\nSelect option", choices=["1", "2"], default="1")
+                        if choice == "2":
+                            console.print("[dim]Workflow aborted by user.[/]")
+                            break
+                        
+                        console.print("")
+                        status.start()
+                elif stage == "complete":
+                    status.stop()
+                    state = update.get("result", {})
+                    _print_report(query, state)
+                elif state_status == "error":
+                    status.stop()
+                    for e in update.get("errors", []):
+                        err(str(e))
+        finally:
+            status.stop()
+    else:
+        with console.status("[bold cyan]Executing workflow... (this may take a minute)", spinner="dots"):
+            t0 = datetime.utcnow()
+            result = await workflow.execute(query)
+            elapsed = (datetime.utcnow() - t0).total_seconds()
+        _print_result(query, result, elapsed)
 
 # ── Pretty-print helpers ──────────────────────────────────────────────────────
-def _print_result(query: str, result: dict, fmt: str, elapsed: float):
+def _print_result(query: str, result: dict, elapsed: float):
     status = result.get("status", "unknown")
     meta   = result.get("metadata", {})
 
-    hdr("WORKFLOW RESULTS", GREEN if "completed" in status else RED)
-    ok(f"Status          : {status}") if "completed" in status else err(f"Status: {status}")
-    ok(f"Processing time : {elapsed:.1f} s")
+    if "completed" in status:
+        ok(f"Workflow completed in {elapsed:.1f}s")
+    else:
+        err(f"Workflow failed after {elapsed:.1f}s")
 
-    cs = result.get("confidence_score")
-    if cs:
-        ok(f"Confidence      : {cs:.0%}")
-
-    # Completed tasks
-    done = meta.get("completed_tasks", [])
-    if done:
-        print(f"\n  {BOLD}Completed stages:{RESET}")
-        for t in done:
-            ok(t)
-
-    # Errors
     errs = meta.get("errors", [])
     if errs:
-        print(f"\n  {BOLD}Errors encountered:{RESET}")
         for e in errs:
             warn(str(e))
 
-    # Report
     report = result.get("report")
     if report:
-        _print_report_object(report, fmt)
+        _print_report_object(report)
     else:
-        err("No report generated — check errors above")
+        err("No report generated")
 
 def _print_report(query: str, state: dict):
-    """Used by streaming path where state is partial."""
     report = state.get("report")
     if report:
-        _print_report_object(report, "markdown")
+        _print_report_object(report)
     else:
         warn("No report in final state")
 
-def _print_report_object(report, fmt: str):
-    from src.agents.writer import ReportFormat, WriterAgent
-    import asyncio
-
-    hdr(f"📄  {report.metadata.title}", GREEN)
-
-    print(f"\n{BOLD}Executive Summary:{RESET}")
-    print(report.executive_summary)
-
-    if report.sections:
-        print(f"\n{BOLD}Report Sections:{RESET}")
-        for s in report.sections:
-            print(f"\n  {CYAN}{BOLD}> {s.title}{RESET}")
-            # Print up to 400 chars of each section
-            content = s.content[:400].replace("\n", "\n    ")
-            print(f"    {content}")
-            if len(s.content) > 400:
-                print(f"    {DIM}… [{len(s.content)-400} more chars]{RESET}")
-
+def _print_report_object(report):
+    md_lines = [
+        f"# {report.metadata.title}",
+        f"**Confidence:** {report.metadata.confidence_score:.0%}  |  **Report ID:** `{report.metadata.report_id}`",
+        "---",
+        "## Executive Summary",
+        report.executive_summary,
+    ]
+    for s in report.sections:
+        md_lines.append(f"## {s.title}")
+        md_lines.append(s.content)
+    
     if report.conclusions:
-        print(f"\n{BOLD}Key Conclusions:{RESET}")
-        for i, c in enumerate(report.conclusions, 1):
-            print(f"  {GREEN}{i}.{RESET} {c}")
-
+        md_lines.append("## Conclusions")
+        for c in report.conclusions:
+            md_lines.append(f"- {c}")
+            
     if report.recommendations:
-        print(f"\n{BOLD}Recommendations:{RESET}")
-        for i, r in enumerate(report.recommendations, 1):
-            print(f"  {YELLOW}{i}.{RESET} {r}")
-
+        md_lines.append("## Recommendations")
+        for r in report.recommendations:
+            md_lines.append(f"- {r}")
+            
     if report.citations:
-        print(f"\n{BOLD}Sources Referenced:{RESET}")
+        md_lines.append("## References")
         for c in report.citations[:6]:
-            title = c.get("title", "")[:60]
-            url   = c.get("url", "")
-            src   = c.get("source", "")
-            print(f"  {DIM}• {title} — {src}{RESET}")
-            if url and url.startswith("http"):
-                print(f"    {DIM}{url}{RESET}")
+            md_lines.append(f"- [{c.get('title', 'Link')}]({c.get('url', '#')}) - {c.get('source', '')}")
 
-    print(f"\n{DIM}Report ID: {report.metadata.report_id}  |  "
-          f"Generated: {report.metadata.created_at[:19]}{RESET}\n")
-
+    md_content = "\n\n".join(md_lines)
+    console.print("\n")
+    console.print(Panel(Markdown(md_content), border_style="green", padding=(1, 2)))
+    
     # Save markdown to file
-    _save_report(report)
+    _save_report(report, md_content)
 
-def _save_report(report):
-    """Save the report as a markdown file in the project root."""
+def _save_report(report, md_content):
     try:
-        from src.agents.writer import WriterAgent, ReportFormat
-        writer = WriterAgent.__new__(WriterAgent)  # don't call __init__ again
-        writer.llm = None
-
-        md_lines = [
-            f"# {report.metadata.title}\n",
-            f"**Generated:** {report.metadata.created_at}  ",
-            f"**Report ID:** `{report.metadata.report_id}`  ",
-            f"**Confidence:** {report.metadata.confidence_score:.0%}\n",
-            "---\n",
-            "## Executive Summary\n",
-            report.executive_summary + "\n",
-        ]
-        for s in report.sections:
-            md_lines.append(f"## {s.title}\n")
-            md_lines.append(s.content + "\n")
-        if report.conclusions:
-            md_lines.append("## Conclusions\n")
-            for c in report.conclusions:
-                md_lines.append(f"- {c}")
-            md_lines.append("")
-        if report.recommendations:
-            md_lines.append("## Recommendations\n")
-            for r in report.recommendations:
-                md_lines.append(f"- {r}")
-            md_lines.append("")
-        if report.citations:
-            md_lines.append("## References\n")
-            for c in report.citations:
-                md_lines.append(f"- [{c.get('title','')}]({c.get('url','')}) — {c.get('source','')}")
-
         fname = ROOT / f"report_{report.metadata.report_id}.md"
-        fname.write_text("\n".join(md_lines), encoding="utf-8")
-        ok(f"Report saved → {fname.name}")
+        fname.write_text(md_content, encoding="utf-8")
+        ok(f"Report saved to {fname.name}")
     except Exception as e:
         warn(f"Could not save report: {e}")
 
 # ── Interactive mode ──────────────────────────────────────────────────────────
-async def interactive_mode(stream: bool, model_override: str | None, fmt: str):
-    hdr("Research-to-Report — Interactive Mode  (Phi-4 Reasoning)", CYAN)
-    print(f"  Type your research question and press Enter.")
-    print(f"  Commands: {BOLD}exit{RESET} | {BOLD}model-test{RESET} | {BOLD}search-test{RESET}\n")
-
+async def interactive_mode(stream: bool, model_override: str | None):
+    hdr("Research Assistant", "blue")
+    console.print("[dim]Type your research question, or 'exit' to quit.[/]")
+    
     while True:
         try:
-            query = input(f"{CYAN}Query>{RESET} ").strip()
+            query = Prompt.ask("\n[bold cyan]Query[/]")
+            query = query.strip()
         except (KeyboardInterrupt, EOFError):
-            print("\nGoodbye!")
+            console.print("\n[dim]Goodbye![/]")
             break
 
         if not query:
             continue
         if query.lower() in ("exit", "quit", "q"):
-            print("Goodbye!")
+            console.print("[dim]Goodbye![/]")
             break
         if query.lower() == "model-test":
             await run_model_test(model_override)
@@ -402,10 +330,7 @@ async def interactive_mode(stream: bool, model_override: str | None, fmt: str):
             continue
 
         try:
-            if stream:
-                await run_streaming(query, model_override)
-            else:
-                await run_query(query, model_override, fmt)
+            await execute_workflow(query, model_override, stream=stream)
         except Exception as e:
             err(f"Pipeline error: {e}")
 
@@ -422,12 +347,9 @@ async def main():
         sys.exit(0)
 
     if args.query:
-        if args.stream:
-            await run_streaming(args.query, args.model)
-        else:
-            await run_query(args.query, args.model, args.format)
+        await execute_workflow(args.query, args.model, stream=args.stream)
     else:
-        await interactive_mode(args.stream, args.model, args.format)
+        await interactive_mode(args.stream, args.model)
 
 
 if __name__ == "__main__":

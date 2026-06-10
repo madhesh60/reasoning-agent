@@ -182,8 +182,9 @@ class MCPWebSearchTool:
         return results
 
     async def _execute_azure_search(self, query: str, max_results: int) -> SearchResponse:
-        """Execute search using Azure AI Project MCP Toolbox (azure-ai-projects SDK)."""
+        """Execute search using Azure AI Project MCP Toolbox (HTTP JSON-RPC)."""
         import time
+        import os
         start_time = time.time()
 
         logger.info(
@@ -194,45 +195,53 @@ class MCPWebSearchTool:
         )
 
         try:
-            from azure.ai.projects import AIProjectClient
-            from azure.core.credentials import AzureKeyCredential
+            mcp_url = os.getenv("MCP_SERVER_URL")
+            if not mcp_url:
+                raise ValueError("MCP_SERVER_URL environment variable is not set")
+                
+            headers = {
+                "Authorization": f"Bearer {self.azure_openai_api_key}", 
+                "Content-Type": "application/json"
+            }
+            payload = {
+                "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                "params": {"name": "web_search", "arguments": {"search_query": query}}
+            }
+            
+            response = await self._client.post(mcp_url, json=payload, headers=headers)
+            response.raise_for_status()
+            data = response.json()
+            
+            # Extract content from MCP JSON-RPC response
+            results_raw = []
+            if "result" in data and "content" in data["result"]:
+                content_list = data["result"]["content"]
+                if isinstance(content_list, list):
+                    # Combine all text blocks and parse them
+                    combined_text = ""
+                    for c in content_list:
+                        if not isinstance(c, dict): continue
+                        if "text" in c:
+                            combined_text += c["text"] + "\n"
+                        elif "resource" in c and "text" in c["resource"]:
+                            combined_text += c["resource"]["text"] + "\n"
+                            
+                    if combined_text:
+                        results_raw = self._parse_azure_search_response(combined_text, query)
 
-            client = AIProjectClient(
-                endpoint=self.azure_project_endpoint,
-                credential=AzureKeyCredential(self.azure_openai_api_key),
-            )
+            # If no results were parsed but we got text, wrap the whole text as a single result
+            if not results_raw and "result" in data and "content" in data["result"]:
+                combined_text = ""
+                for c in data["result"]["content"]:
+                    if not isinstance(c, dict): continue
+                    if "text" in c:
+                        combined_text += c["text"] + "\n"
+                    elif "resource" in c and "text" in c["resource"]:
+                        combined_text += c["resource"]["text"] + "\n"
+                        
+                if combined_text.strip():
+                     results_raw = [{"title": f"Search Results for '{query}'", "url": "https://bing.com", "snippet": combined_text.strip(), "source": "Bing MCP", "relevance_score": 1.0, "authority_score": 1.0}]
 
-            # Call the MCP toolbox via the connections API
-            # The toolbox exposes a Bing web search tool
-            with client:
-                connections = client.connections.list()
-                # Use the agent run API to call the web search toolbox
-                agent = client.agents.create_agent(
-                    model=None,  # not needed for tool-only calls
-                    name="web-search-runner",
-                    instructions="You are a web search assistant. Use the bing_grounding tool to search.",
-                    toolbox_name=self.azure_toolbox_name,
-                )
-                thread = client.agents.create_thread()
-                message = client.agents.create_message(
-                    thread_id=thread.id,
-                    role="user",
-                    content=f"Search for: {query}. Return the top {max_results} results as a plain text summary with titles and URLs.",
-                )
-                run = client.agents.create_and_process_run(
-                    thread_id=thread.id, agent_id=agent.id
-                )
-                messages = client.agents.list_messages(thread_id=thread.id)
-                # Get last assistant message
-                result_text = ""
-                for msg in messages:
-                    if msg.role == "assistant":
-                        result_text = msg.content[0].text.value if msg.content else ""
-                        break
-                # Cleanup
-                client.agents.delete_agent(agent.id)
-
-            results_raw = self._parse_azure_search_response(result_text, query) if result_text else []
             search_results = [
                 SearchResult(
                     title=r["title"], url=r["url"], snippet=r["snippet"],
@@ -598,7 +607,15 @@ def create_document_search_tool(config: dict[str, Any]) -> MCPDocumentSearchTool
 
 async def main():
     """Demo function for testing MCP tools."""
-    from ..utils.config import load_environment
+    import sys
+    from pathlib import Path
+    
+    # Add project root to python path so 'src' can be imported when running standalone
+    project_root = str(Path(__file__).resolve().parents[2])
+    if project_root not in sys.path:
+        sys.path.insert(0, project_root)
+
+    from src.utils.config import load_environment
     load_environment()
 
     print("=" * 60)
