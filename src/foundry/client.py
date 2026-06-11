@@ -30,6 +30,16 @@ from typing import Any
 
 logger = structlog.get_logger(__name__)
 
+import time
+from azure.core.credentials import AccessToken
+
+class CustomApiKeyCredential:
+    def __init__(self, api_key: str):
+        self.api_key = api_key
+
+    def get_token(self, *scopes, **kwargs) -> AccessToken:
+        return AccessToken(self.api_key, int(time.time()) + 3600)
+
 _MAX_RETRIES = 3
 _RETRY_DELAY = 2.0
 
@@ -137,12 +147,11 @@ class FoundryAgentClient:
         instructions — we only need to send the user message.
         """
         from azure.ai.projects import AIProjectClient
-        from azure.identity import DefaultAzureCredential
 
-        # Build the project client using DefaultAzureCredential
+        # Build the project client using CustomApiKeyCredential
         project_client = AIProjectClient(
             endpoint=self._endpoint,
-            credential=DefaultAzureCredential(exclude_interactive_browser_credential=True),
+            credential=CustomApiKeyCredential(self._api_key),
         )
 
         # Get the OpenAI-compatible client attached to this Foundry project
