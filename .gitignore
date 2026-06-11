@@ -21,3 +21,11 @@ tasks/
 walkthrough/
 *.log
 *.sqlite
+
+# PyPI build artifacts
+dist/
+build/
+*.egg-info/
+
+# Generated reports
+report_*.md
