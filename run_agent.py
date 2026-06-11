@@ -181,7 +181,7 @@ async def execute_workflow(query: str, model_override: str | None = None, stream
     load_environment()
 
     from src.orchestration.research_workflow import ResearchWorkflow
-    workflow = ResearchWorkflow(enable_a2a=False, enable_mcp=True, max_retries=2)
+    workflow = ResearchWorkflow(enable_a2a=True, enable_mcp=True, max_retries=2)
 
     STAGE_LABELS = {
         "plan":          "Planner: Decomposing query into sub-tasks...",

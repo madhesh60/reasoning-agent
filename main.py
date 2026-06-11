@@ -129,7 +129,7 @@ async def ask(request: AskRequest):
 
         from src.orchestration.research_workflow import ResearchWorkflow
         workflow = ResearchWorkflow(
-            enable_a2a=False,
+            enable_a2a=True,
             enable_mcp=request.enable_web_search,
             max_retries=request.max_retries
         )
@@ -327,7 +327,7 @@ async def _run_pipeline(query: str) -> dict:
         from src.utils.config import load_environment
         load_environment()
         from src.orchestration.research_workflow import ResearchWorkflow
-        workflow = ResearchWorkflow(enable_a2a=False, enable_mcp=True, max_retries=2)
+        workflow = ResearchWorkflow(enable_a2a=True, enable_mcp=True, max_retries=2)
         result = await workflow.execute(query)
         report_obj = result.get("report")
         if report_obj:

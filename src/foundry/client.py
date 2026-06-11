@@ -1,90 +1,61 @@
 import os
-import uuid
 import asyncio
 import structlog
 from typing import Optional, Dict, Any
 import json
 import json_repair
 
-from azure.core.credentials import AzureKeyCredential
+from azure.identity import DefaultAzureCredential
 from azure.ai.projects import AIProjectClient
-from azure.ai.projects.models import VersionRefIndicator
 
 logger = structlog.get_logger(__name__)
 
 class FoundryAgentClient:
     """
     Client for calling real Azure Foundry Agents via the Azure AI Projects SDK.
-    Uses the Responses API to interact with agents dynamically.
+    Uses the Responses API to interact with agents dynamically using their reference name and version.
     """
-    def __init__(self, agent_name: str, endpoint: Optional[str] = None, api_key: Optional[str] = None):
+    def __init__(self, agent_name: str, agent_version: str, endpoint: Optional[str] = None):
         self.agent_name = agent_name
-        self.endpoint = endpoint or os.getenv("AZURE_EXISTING_AIPROJECT_ENDPOINT")
-        self.api_key = api_key or os.getenv("AZURE_OPENAI_API_KEY")
+        self.agent_version = agent_version
+        self.endpoint = endpoint or os.getenv("AZURE_PROJECT_ENDPOINT") or "https://reasoning-agent-hack2-resource.services.ai.azure.com/api/projects/reasoning-agent-hack2"
         
-        if not self.endpoint or not self.api_key:
-            logger.warning("foundry_client_missing_credentials", agent=agent_name)
+        if not self.endpoint:
+            logger.warning("foundry_client_missing_endpoint", agent=agent_name)
 
     async def call_agent_raw(self, prompt: str) -> str:
         """
-        Connects to the Azure Foundry agent session, sends a prompt, and returns the raw string response.
+        Connects to the Azure Foundry agent using the agent_reference, sends a prompt, and returns the raw string response.
         """
-        if not self.endpoint or not self.api_key:
-            raise ValueError("Missing endpoint or API key for Foundry Agent Client.")
+        if not self.endpoint:
+            raise ValueError("Missing endpoint for Foundry Agent Client.")
             
-        logger.info("calling_foundry_agent_raw", agent=self.agent_name)
+        logger.info("calling_foundry_agent_raw", agent=self.agent_name, version=self.agent_version)
         
         loop = asyncio.get_event_loop()
         
         def _sync_call():
             with AIProjectClient(
                 endpoint=self.endpoint,
-                credential=AzureKeyCredential(self.api_key),
-                allow_preview=True,
+                credential=DefaultAzureCredential(),
             ) as project_client:
-                isolation_key = f"iso-{uuid.uuid4().hex[:8]}"
-                
-                # Fetch the agent to determine the latest version
-                agent = project_client.agents.get(agent_name=self.agent_name)
-                agent_version = None
-                
-                if hasattr(agent, "versions") and agent.versions:
-                    if "latest" in agent.versions:
-                        agent_version = agent.versions["latest"].version
-                    else:
-                        versions = list(agent.versions.values())
-                        if versions:
-                            agent_version = versions[-1].version
-                            
-                session_args = {
-                    "agent_name": self.agent_name,
-                    "isolation_key": isolation_key,
-                }
-                if agent_version:
-                    session_args["version_indicator"] = VersionRefIndicator(agent_version=agent_version)
-                    
-                session = project_client.beta.agents.create_session(**session_args)
-                
-                try:
-                    openai_client = project_client.get_openai_client(agent_name=self.agent_name)
-                    response = openai_client.responses.create(
-                        input=prompt,
-                        extra_body={
-                            "agent_session_id": session.agent_session_id,
-                        },
-                    )
-                    return response.output_text
-                finally:
-                    project_client.beta.agents.delete_session(
-                        agent_name=self.agent_name,
-                        session_id=session.agent_session_id,
-                        isolation_key=isolation_key,
-                    )
+                openai_client = project_client.get_openai_client()
+                response = openai_client.responses.create(
+                    input=[{"role": "user", "content": prompt}],
+                    extra_body={
+                        "agent_reference": {
+                            "name": self.agent_name,
+                            "version": self.agent_version,
+                            "type": "agent_reference"
+                        }
+                    },
+                )
+                return response.output_text
                     
         try:
             return await loop.run_in_executor(None, _sync_call)
         except Exception as e:
-            logger.error("foundry_agent_call_failed", agent=self.agent_name, error=str(e))
+            logger.error("foundry_agent_call_failed", agent=self.agent_name, version=self.agent_version, error=str(e))
             raise e
 
     async def call_agent_json(self, prompt: str) -> Dict[str, Any]:
@@ -102,3 +73,4 @@ class FoundryAgentClient:
         except Exception as e:
             logger.error("foundry_agent_json_parse_failed", error=str(e), raw_snippet=raw_response[:100])
             raise ValueError(f"Failed to parse agent response as JSON: {e}")
+

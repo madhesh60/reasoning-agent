@@ -116,10 +116,10 @@ class ResearchWorkflow:
         """Set up A2A protocol for real Azure Foundry Agents."""
         try:
             self.a2a_clients = {
-                "planner": FoundryAgentClient(agent_name="planner-agent"),
-                "researcher": FoundryAgentClient(agent_name="researcher-agent"),
-                "analyst": FoundryAgentClient(agent_name="analyst-agent"),
-                "writer": FoundryAgentClient(agent_name="writer-agent"),
+                "planner": FoundryAgentClient(agent_name="planner-agent", agent_version="5"),
+                "researcher": FoundryAgentClient(agent_name="researcher-agent", agent_version="6"),
+                "analyst": FoundryAgentClient(agent_name="analyst-agent", agent_version="3"),
+                "writer": FoundryAgentClient(agent_name="writer-agent", agent_version="3"),
             }
             logger.info("a2a_foundry_clients_initialized", agents=list(self.a2a_clients.keys()))
         except Exception as e:
@@ -177,18 +177,15 @@ class ResearchWorkflow:
                 logger.info("found_past_research_plan", memory_id=past_memories[0].key)
                 past_context_str = json.dumps(past_memories[0].value, indent=2)
 
-            if self.enable_a2a and self.a2a_clients and "planner" in self.a2a_clients:
-                try:
-                    logger.info("a2a_planner_decompose_task_start")
-                    context_prompt = f"\nPAST CONTEXT FROM PREVIOUS RESEARCH:\n{past_context_str}\n(Use this to avoid redundant work and leverage known insights)\n" if past_context_str else ""
-                    prompt = f"Please decompose the following research query into tasks:\n\nQuery: {state['query']}{context_prompt}\n\nRespond strictly with JSON matching the ResearchPlan schema."
-                    result = await self.a2a_clients["planner"].call_agent_json(prompt)
-                    if result:
-                        plan = ResearchPlan(**result)
-                except Exception as e:
-                    logger.warning("a2a_planner_decompose_task_exception", error=str(e))
-
-            if plan is None:
+            if self.enable_a2a:
+                if not self.a2a_clients or "planner" not in self.a2a_clients:
+                    raise ValueError("A2A is enabled but planner client is not initialized.")
+                logger.info("a2a_planner_decompose_task_start")
+                context_prompt = f"\nPAST CONTEXT FROM PREVIOUS RESEARCH:\n{past_context_str}\n(Use this to avoid redundant work and leverage known insights)\n" if past_context_str else ""
+                prompt = f"Please decompose the following research query into tasks:\n\nQuery: {state['query']}{context_prompt}\n\nRespond strictly with JSON matching the ResearchPlan schema."
+                result = await self.a2a_clients["planner"].call_agent_json(prompt)
+                plan = ResearchPlan(**result)
+            else:
                 plan = await self.planner.decompose_task(state["query"], past_context=past_context_str)
 
             # Update confidence tracking
@@ -223,18 +220,13 @@ class ResearchWorkflow:
 
         logger.info("workflow_validate_plan_start", plan_id=plan.plan_id)
 
-        validation = None
-        if self.enable_a2a and self.a2a_clients and "planner" in self.a2a_clients:
-            try:
-                logger.info("a2a_planner_validate_plan_start")
-                prompt = f"Please validate the following research plan:\n\nPlan:\n{plan.model_dump_json(indent=2)}\n\nRespond strictly with JSON matching the validation schema (can_proceed, warnings, etc.)."
-                result = await self.a2a_clients["planner"].call_agent_json(prompt)
-                if result:
-                    validation = result
-            except Exception as e:
-                logger.warning("a2a_planner_validate_plan_exception", error=str(e))
-
-        if validation is None:
+        if self.enable_a2a:
+            if not self.a2a_clients or "planner" not in self.a2a_clients:
+                raise ValueError("A2A is enabled but planner client is not initialized.")
+            logger.info("a2a_planner_validate_plan_start")
+            prompt = f"Please validate the following research plan:\n\nPlan:\n{plan.model_dump_json(indent=2)}\n\nRespond strictly with JSON matching the validation schema (can_proceed, warnings, etc.)."
+            validation = await self.a2a_clients["planner"].call_agent_json(prompt)
+        else:
             validation = await self.planner.validate_plan(plan)
 
         return {
@@ -274,18 +266,14 @@ class ResearchWorkflow:
                 if task.task_type == TaskType.WEB_SEARCH
             ]
 
-            research_results = None
-            if self.enable_a2a and self.a2a_clients and "researcher" in self.a2a_clients:
-                try:
-                    logger.info("a2a_researcher_search_start")
-                    prompt = f"Please perform research for the following query:\n\nQuery: {state['query']}\nMax Results: 10\n\nRespond strictly with JSON matching the ResearchResults schema."
-                    result = await self.a2a_clients["researcher"].call_agent_json(prompt)
-                    if result:
-                        research_results = ResearchResults(**result)
-                except Exception as e:
-                    logger.warning("a2a_researcher_search_exception", error=str(e))
-
-            if research_results is None:
+            if self.enable_a2a:
+                if not self.a2a_clients or "researcher" not in self.a2a_clients:
+                    raise ValueError("A2A is enabled but researcher client is not initialized.")
+                logger.info("a2a_researcher_search_start")
+                prompt = f"Please perform research for the following query:\n\nQuery: {state['query']}\nMax Results: 10\n\nRespond strictly with JSON matching the ResearchResults schema."
+                result = await self.a2a_clients["researcher"].call_agent_json(prompt)
+                research_results = ResearchResults(**result)
+            else:
                 if search_tasks:
                     # Use the first search task's queries
                     search_queries = search_tasks[0].search_queries
@@ -345,19 +333,15 @@ class ResearchWorkflow:
                 "search_results": research_results.sources_used
             }
 
-            analysis_results = None
-            if self.enable_a2a and self.a2a_clients and "analyst" in self.a2a_clients:
-                try:
-                    import json
-                    logger.info("a2a_analyst_analyze_start")
-                    prompt = f"Please analyze the following research data for the query.\n\nQuery: {state['query']}\n\nResearch Data:\n{json.dumps(research_data, indent=2)}\n\nRespond strictly with JSON matching the AnalysisResults schema."
-                    result = await self.a2a_clients["analyst"].call_agent_json(prompt)
-                    if result:
-                        analysis_results = AnalysisResults(**result)
-                except Exception as e:
-                    logger.warning("a2a_analyst_analyze_exception", error=str(e))
-
-            if analysis_results is None:
+            if self.enable_a2a:
+                if not self.a2a_clients or "analyst" not in self.a2a_clients:
+                    raise ValueError("A2A is enabled but analyst client is not initialized.")
+                import json
+                logger.info("a2a_analyst_analyze_start")
+                prompt = f"Please analyze the following research data for the query.\n\nQuery: {state['query']}\n\nResearch Data:\n{json.dumps(research_data, indent=2)}\n\nRespond strictly with JSON matching the AnalysisResults schema."
+                result = await self.a2a_clients["analyst"].call_agent_json(prompt)
+                analysis_results = AnalysisResults(**result)
+            else:
                 analysis_results = await self.analyst.analyze(
                     query=state["query"],
                     research_data=research_data
@@ -433,19 +417,15 @@ class ResearchWorkflow:
                 ]
 
 
-            report = None
-            if self.enable_a2a and self.a2a_clients and "writer" in self.a2a_clients:
-                try:
-                    import json
-                    logger.info("a2a_writer_generate_report_start")
-                    prompt = f"Please write a comprehensive report based on the following analysis.\n\nQuery: {state['query']}\n\nAnalysis Data:\n{json.dumps(analysis_data, indent=2)}\n\nRespond strictly with JSON matching the GeneratedReport schema."
-                    result = await self.a2a_clients["writer"].call_agent_json(prompt)
-                    if result:
-                        report = GeneratedReport(**result)
-                except Exception as e:
-                    logger.warning("a2a_writer_generate_report_exception", error=str(e))
-
-            if report is None:
+            if self.enable_a2a:
+                if not self.a2a_clients or "writer" not in self.a2a_clients:
+                    raise ValueError("A2A is enabled but writer client is not initialized.")
+                import json
+                logger.info("a2a_writer_generate_report_start")
+                prompt = f"Please write a comprehensive report based on the following analysis.\n\nQuery: {state['query']}\n\nAnalysis Data:\n{json.dumps(analysis_data, indent=2)}\n\nRespond strictly with JSON matching the GeneratedReport schema."
+                result = await self.a2a_clients["writer"].call_agent_json(prompt)
+                report = GeneratedReport(**result)
+            else:
                 report = await self.writer.generate_report(
                     query=state["query"],
                     analysis_results=analysis_data
