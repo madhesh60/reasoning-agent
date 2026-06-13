@@ -56,8 +56,15 @@ async def _llm_questions(query: str, memory_context: str, max_q: int, cfg: 'Conf
 
     def _call() -> str:
         client = cfg.build_openai_client()
+        
+        # Foundry uses .env deployment name, otherwise fallback to standard cfg.model
+        import os
+        model_name = cfg.model
+        if cfg.provider == "foundry":
+            model_name = os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o")
+            
         resp   = client.chat.completions.create(
-            model=cfg.model,
+            model=model_name,
             messages=[
                 {"role": "system", "content": system},
                 {"role": "user",   "content": user_msg},

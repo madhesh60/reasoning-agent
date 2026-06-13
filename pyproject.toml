@@ -4,7 +4,7 @@
 
 [project]
 name = "logos-research"
-version = "1.0.1"
+version = "1.0.2"
 description = "LOGOS — Autonomous Research Intelligence Agent. 6-agent AI research pipeline with persistent memory, human-in-the-loop clarifications, and story-driven CLI."
 readme = "README.md"
 requires-python = ">=3.10"

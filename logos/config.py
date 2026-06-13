@@ -163,6 +163,16 @@ class Config:
                 api_key=self.api_key,
                 api_version="2024-08-01-preview",
             )
+        elif self.provider == "foundry":
+            import os
+            endpoint = os.getenv("AZURE_OPENAI_ENDPOINT", "")
+            api_key  = os.getenv("AZURE_OPENAI_API_KEY", "")
+            if endpoint and api_key:
+                return AzureOpenAI(
+                    azure_endpoint=endpoint,
+                    api_key=api_key,
+                    api_version="2024-08-01-preview",
+                )
 
         kwargs: dict[str, Any] = {"api_key": self.api_key or "sk-no-key"}
         if self.base_url:
