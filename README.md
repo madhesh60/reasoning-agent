@@ -1,6 +1,6 @@
 # LOGOS: Autonomous Multi-Agent Research Intelligence System
 
-LOGOS is a production-grade, enterprise-ready multi-agent research and competitive intelligence pipeline built on **Microsoft Azure AI Foundry**. It is designed to assist market analysts, executives, and investment firms in scanning industry trends, profiling competitors, assessing strategic risks, and compiling comprehensive strategy reports.
+LOGOS is a production-grade, multi-agent reasoning and competitive intelligence pipeline built on **Microsoft Azure AI Foundry**. It is designed to assist market analysts, executives, and investment firms in scanning industry trends, profiling competitors, assessing strategic risks, and compiling comprehensive strategy reports.
 
 ---
 
