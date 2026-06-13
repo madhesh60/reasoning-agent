@@ -5,36 +5,37 @@ from __future__ import annotations
 import os
 import re
 import asyncio
-from typing import Any
+from typing import Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from logos.config import Config
 
 
 async def generate_questions(
     query: str,
     memory_context: str = "",
     max_questions: int = 3,
+    cfg: 'Config | None' = None,
 ) -> list[str]:
     """
     Generate targeted clarifying questions for a research query.
 
-    Calls the Azure OpenAI endpoint directly (fast, ~2-3s).
+    Calls the LLM endpoint directly (fast, ~2-3s).
     Falls back to a set of smart default questions if the call fails.
     """
+    if not cfg:
+        from logos.config import Config
+        cfg = Config()
+
     try:
-        return await _foundry_questions(query, memory_context, max_questions)
-    except Exception:
+        return await _llm_questions(query, memory_context, max_questions, cfg)
+    except Exception as e:
+        import logging
+        logging.error(f"Failed to generate questions: {e}")
         return _default_questions(query)[:max_questions]
 
 
-async def _foundry_questions(query: str, memory_context: str, max_q: int) -> list[str]:
-    from openai import AzureOpenAI
-
-    endpoint   = os.getenv("AZURE_OPENAI_ENDPOINT", "").rstrip("/")
-    api_key    = os.getenv("AZURE_OPENAI_API_KEY", "")
-    deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o")
-
-    if not endpoint or not api_key:
-        raise ValueError("Azure OpenAI credentials not configured")
-
+async def _llm_questions(query: str, memory_context: str, max_q: int, cfg: 'Config') -> list[str]:
     system = (
         "You are a senior research coordinator for an intelligence agency. "
         f"A researcher has submitted a query. Your job is to generate exactly {max_q} "
@@ -54,9 +55,9 @@ async def _foundry_questions(query: str, memory_context: str, max_q: int) -> lis
     loop = asyncio.get_running_loop()
 
     def _call() -> str:
-        client = AzureOpenAI(base_url=endpoint, api_key=api_key)
+        client = cfg.build_openai_client()
         resp   = client.chat.completions.create(
-            model=deployment,
+            model=cfg.model,
             messages=[
                 {"role": "system", "content": system},
                 {"role": "user",   "content": user_msg},
