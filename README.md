@@ -175,6 +175,69 @@ pytest tests/test_agents.py -v
 
 ---
 
+## Hackathon Proof & Verification
+
+This section lists the system validation runs and screenshots showcasing the working state of the agent, its memory, traces, containerization, and security guardrails.
+
+### 1. System Architecture
+![System Architecture](proofs/Architecture.png)
+*Provides a high-level overview of the multi-agent orchestration pipeline, depicting how Planner, Researcher, Industry News Scanner, Competitive Intel, Analyst, and Writer agents cooperate and coordinate in a sequential pipeline.*
+
+### 2. Conversation & Execution Trace
+![Conversation Trace](proofs/Convo_Trace.png)
+*A visual execution trace illustrating the active agent steps, agent-to-agent protocol exchanges, and LLM calls executed during a research session.*
+
+### 3. User Personalization & Short-Term Memory
+![User Personalization & Memory](proofs/memory%20-%20User%20personalization.png)
+*Demonstrates the persistent SQLite memory layer. Type `memory` inside the interactive shell to review the customized profile, domain focus, and tracked research history.*
+
+### 4. Running Container & Registry Deployment
+![Container Registry Deployment](proofs/Containerregistry.png)
+*Confirms that the FastAPI service is containerized and pushed to the Azure Container Registry (`reasoningagentregistry.azurecr.io`), ready to be pulled by Azure AI Foundry Hosted Agent Services.*
+
+### 5. Input and Output Security Guardrails
+![Input & Output Guardrails](proofs/Guardrils1.png)
+![Content Blocklist Validation](proofs/Blocklist.png)
+*Showcases active safety layers, demonstrating how toxic prompts, PII leaks, and blocked content are intercepted and sanitized in real-time.*
+
+### 6. FoundryIQ - Project Knowledge Base
+![FoundryIQ Knowledge Base Connection](proofs/FoundryIQ-%20KnowledgeBase.png)
+*Validates the connection of the multi-agent system to the project knowledge base, enabling the agents to query internal documentation and custom databases.*
+
+### 7. Workflow Visualizer
+![Foundry Workflow Visualizer](proofs/workflow.png)
+*Displays the visual layout of the 6-agent sequential orchestration pattern as defined within the Azure AI Foundry playground.*
+
+### 8. Python Package Installation (PyPI View)
+![PyPI view](proofs/PyPI-view.png)
+*Confirms local installation verification as an editable Python package, showing successful dependency resolution and environment setup.*
+
+### 9. Multi-Agent Setup
+![Multi-Agent Setup](proofs/agents.png)
+*Confirms the successfully configured Azure AI Foundry assistants, listing IDs and deployment specifications.*
+
+---
+
 ## License
 
-This project is licensed under the MIT License.
+MIT License
+
+Copyright (c) 2026
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
