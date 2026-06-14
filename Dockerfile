@@ -1,5 +1,8 @@
 FROM python:3.11-slim
 
+# Bust stale CI cache if needed: docker build --build-arg CACHEBUST=$(date +%s)
+ARG CACHEBUST=1
+
 # Metadata
 LABEL maintainer="Reasoning-Agent-Hackathon"
 LABEL description="OpenAI Reasoning Multi-Agent System — Microsoft Agent League Hackathon"
