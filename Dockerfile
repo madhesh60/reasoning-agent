@@ -21,7 +21,6 @@ RUN pip install --no-cache-dir --upgrade pip && \
 COPY src/ ./src/
 COPY main.py .
 COPY run_agent.py .
-COPY quick_demo.py .
 
 # Create a non-root user for security
 RUN useradd -m -u 1000 agentuser && chown -R agentuser:agentuser /app
