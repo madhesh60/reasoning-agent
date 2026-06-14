@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [
-    {name = "Raj", email = "raj@example.com"}
+    {name = "Madhesh Sasikala", email = "madheshsasikala81@gmail.com"}
 ]
 keywords = [
     "ai", "research", "agents", "azure", "foundry",

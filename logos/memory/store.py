@@ -83,7 +83,7 @@ class MemoryStore:
         mem = MemoryStore()          # uses ~/.logos/memory.db
         mem.initialize()
         profile = mem.get_user_profile()
-        mem.set_profile(name="Raj", role="founder")
+        mem.set_profile(name="Madhesh", role="founder")
         qid = mem.save_query("NLP trends", summary="...", topics=["NLP","AI"])
         mem.save_insight(qid, "RAG adoption grew 3x in 2025")
     """
@@ -120,7 +120,7 @@ class MemoryStore:
         return {r["key"]: r["value"] for r in rows}
 
     def set_profile(self, **kwargs: str) -> None:
-        """Upsert profile fields.  e.g. set_profile(name='Raj', role='analyst')"""
+        """Upsert profile fields.  e.g. set_profile(name='Madhesh', role='analyst')"""
         now = _now()
         conn = self._get_conn()
         for key, value in kwargs.items():

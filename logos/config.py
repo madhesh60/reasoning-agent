@@ -55,7 +55,7 @@ PROVIDERS: dict[str, dict[str, Any]] = {
     "ollama": {
         "label":         "Local Ollama (no API key needed)",
         "base_url":      "http://localhost:11434/v1",
-        "models":        ["llama3.2", "qwen2.5", "mistral", "deepseek-r1", "phi4"],
+        "models":        ["llama3.2", "qwen2.5", "mistral", "deepseek-r1"],
         "default_model": "llama3.2",
         "api_key":       "ollama",       # dummy — Ollama ignores it
     },

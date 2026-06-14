@@ -33,7 +33,7 @@ The hackathon requires integrating at least one Microsoft IQ intelligence layer.
 *   **LOGOS Implementation**:
     *   **SQLite Semantic Schema**: The database schema structures relationships between research sessions (`queries`), entity mention counters (`tracked_entities`), and manual bookmarks (`insights`).
     *   **Historical Analysis**: As queries run, the system tracks entity mention frequencies. Users can bookmark findings, linking them back to query sessions.
-    *   **Ontario Enrichment**: The system queries historical entity counts and bookmarked insights to enrich new runs, building a semantic ontology of the user's research focus over time.
+    *   **Ontology Enrichment**: The system queries historical entity counts and bookmarked insights to enrich new runs, building a semantic ontology of the user's research focus over time.
 
 ---
 
