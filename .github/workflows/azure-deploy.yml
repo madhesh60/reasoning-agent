@@ -55,7 +55,26 @@ jobs:
             AZURE_EXISTING_AGENT_ID=${{ secrets.AZURE_EXISTING_AGENT_ID }} \
             AZURE_EXISTING_AIPROJECT_ENDPOINT=${{ secrets.AZURE_EXISTING_AIPROJECT_ENDPOINT }}"
 
-          # Check if Container App exists and its provisioning state
+          # Helper: wait until app is fully gone from Azure
+          wait_for_deletion() {
+            echo "Waiting for Container App to be fully deleted..."
+            for i in $(seq 1 30); do
+              STATE=$(az containerapp show \
+                --name ${{ env.CONTAINER_APP_NAME }} \
+                --resource-group ${{ env.RESOURCE_GROUP }} \
+                --query "properties.provisioningState" -o tsv 2>/dev/null || echo "NotFound")
+              echo "  Poll $i: $STATE"
+              if [ "$STATE" = "NotFound" ]; then
+                echo "Container App fully deleted."
+                return 0
+              fi
+              sleep 10
+            done
+            echo "Timed out waiting for deletion."
+            exit 1
+          }
+
+          # Check current provisioning state
           PROVISIONING_STATE=$(az containerapp show \
             --name ${{ env.CONTAINER_APP_NAME }} \
             --resource-group ${{ env.RESOURCE_GROUP }} \
@@ -63,17 +82,18 @@ jobs:
 
           echo "Current provisioning state: $PROVISIONING_STATE"
 
-          # Delete if stuck in failed state
-          if [ "$PROVISIONING_STATE" = "Failed" ]; then
-            echo "Container App is in Failed state, deleting before recreation..."
+          # Delete if app is unhealthy or stuck — only keep if cleanly Succeeded
+          if [ "$PROVISIONING_STATE" != "NotFound" ] && [ "$PROVISIONING_STATE" != "Succeeded" ]; then
+            echo "App is in '$PROVISIONING_STATE' state — deleting and recreating..."
             az containerapp delete \
               --name ${{ env.CONTAINER_APP_NAME }} \
               --resource-group ${{ env.RESOURCE_GROUP }} \
-              --yes
+              --yes || true
+            wait_for_deletion
             PROVISIONING_STATE="NotFound"
           fi
 
-          # Create or update
+          # Create or update based on current state
           if [ "$PROVISIONING_STATE" = "NotFound" ]; then
             echo "Creating new Container App..."
             az containerapp create \
@@ -97,4 +117,5 @@ jobs:
               --image "$IMAGE" \
               --set-env-vars $ENV_VARS
           fi
+
 
