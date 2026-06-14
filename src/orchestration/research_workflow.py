@@ -19,7 +19,6 @@ context is passed to the next stage. If writer also fails → local fallback mod
 from __future__ import annotations
 
 import asyncio
-import json
 import os
 import uuid
 from datetime import datetime
@@ -29,7 +28,9 @@ import json_repair
 import structlog
 
 from ..agents import (
-    GeneratedReport, ReportMetadata, ReportSection,
+    GeneratedReport,
+    ReportMetadata,
+    ReportSection,
 )
 
 logger = structlog.get_logger(__name__)
@@ -401,8 +402,9 @@ class ResearchWorkflow:
 
     async def _local_fallback(self, query: str, context: str, t0: datetime) -> GeneratedReport:
         try:
-            from ..utils.config import get_chat_model
             from langchain_core.messages import HumanMessage, SystemMessage
+
+            from ..utils.config import get_chat_model
 
             llm = get_chat_model(temperature=0.4, max_tokens=3000)
             prompt = (

@@ -15,9 +15,10 @@ Usage:
 """
 
 import os
-import structlog
-from typing import Any
 from dataclasses import dataclass
+from typing import Any
+
+import structlog
 from dotenv import load_dotenv
 
 logger = structlog.get_logger(__name__)
@@ -216,7 +217,7 @@ def get_chat_model(temperature: float = 0.3, max_tokens: int = 3000) -> Any:
     max_tokens: caps total output tokens. Critical for reasoning models which
     can consume thousands of tokens in <think> blocks before outputting JSON.
     """
-    from langchain_openai import ChatOpenAI, AzureChatOpenAI
+    from langchain_openai import AzureChatOpenAI, ChatOpenAI
 
     config = get_azure_openai_config()
     endpoint = config["endpoint"]
@@ -299,8 +300,8 @@ def clean_and_parse_json(text: str) -> Any:
     - Truncated JSON (finish_reason=length)
     - Surrounding prose before/after the JSON
     """
-    import re
     import json
+    import re
 
     # ── 1. Strip <think>...</think> blocks (handles closed and unclosed) ────────
     # Reasoning models output potentially very long <think> blocks.
@@ -361,7 +362,7 @@ def clean_and_parse_json(text: str) -> Any:
     # ── 5. First attempt: direct parse ────────────────────────────────────────
     try:
         return json.loads(text_clean)
-    except json.JSONDecodeError as first_err:
+    except json.JSONDecodeError:
         pass
 
     # ── 6. Second attempt: repair truncated JSON (model hit token limit) ──────
@@ -452,23 +453,23 @@ if __name__ == "__main__":
     print("\nCurrent Configuration:")
 
     openai_config = get_azure_openai_config()
-    print(f"\nAzure OpenAI:")
+    print("\nAzure OpenAI:")
     print(f"  Endpoint: {openai_config['endpoint'][:50]}..." if openai_config['endpoint'] else "  Endpoint: Not set")
     print(f"  Deployment: {openai_config['deployment']}")
     print(f"  API Key: {'***' + openai_config['api_key'][-4:] if openai_config['api_key'] else 'Not set'}")
 
     foundry_config = get_azure_foundry_config()
-    print(f"\nAzure Foundry:")
+    print("\nAzure Foundry:")
     print(f"  Project: {foundry_config['project'] or 'Not set'}")
     print(f"  Endpoint: {foundry_config['endpoint'][:50]}..." if foundry_config['endpoint'] else "  Endpoint: Not set")
 
     mcp_config = get_mcp_config()
-    print(f"\nMCP Server:")
+    print("\nMCP Server:")
     print(f"  URL: {mcp_config['server_url']}")
 
 
     agent_config = get_agent_config()
-    print(f"\nAgent Settings:")
+    print("\nAgent Settings:")
     print(f"  Temperature: {agent_config['temperature']}")
     print(f"  Max Tokens: {agent_config['max_tokens']}")
 

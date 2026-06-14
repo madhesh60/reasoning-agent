@@ -21,26 +21,25 @@ Open docs:
 import asyncio
 import os
 import sys
+import uuid
+from datetime import datetime
 from pathlib import Path
+
+import structlog
+from dotenv import load_dotenv
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
-if sys.platform == "win32":
+if sys.platform == "win32" and "pytest" not in sys.modules:
     import io
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
 
-from dotenv import load_dotenv
 load_dotenv(ROOT / ".env")
-
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
-from datetime import datetime
-import structlog
-import uuid
 
 logger = structlog.get_logger(__name__)
 
@@ -104,11 +103,11 @@ async def add_security_headers_and_logging(request: Request, call_next):
         structlog.contextvars.bind_contextvars(request_id=request_id)
     except AttributeError:
         pass
-        
+
     t0 = datetime.utcnow()
     response = await call_next(request)
     elapsed = (datetime.utcnow() - t0).total_seconds()
-    
+
     # Add Security Headers
     response.headers["X-Request-ID"] = request_id
     response.headers["X-Frame-Options"] = "DENY"
@@ -116,7 +115,7 @@ async def add_security_headers_and_logging(request: Request, call_next):
     response.headers["Referrer-Policy"] = "no-referrer"
     response.headers["Content-Security-Policy"] = "default-src 'self'"
     response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-    
+
     logger.info(
         "request_processed",
         path=request.url.path,
@@ -131,19 +130,19 @@ async def add_security_headers_and_logging(request: Request, call_next):
 # ── Request / Response Models ────────────────────────────────────────────────
 class AskRequest(BaseModel):
     query: str = Field(
-        ..., 
-        description="The research query to run", 
+        ...,
+        description="The research query to run",
         examples=["What are the top 3 investment risks in the Indian EV market?"]
     )
     max_retries: int = Field(
-        2, 
-        ge=1, 
-        le=5, 
+        2,
+        ge=1,
+        le=5,
         description="Maximum number of retries for failed agents (1 to 5)",
         examples=[2]
     )
     enable_web_search: bool = Field(
-        True, 
+        True,
         description="Enable real-time web search via MCP",
         examples=[True]
     )
@@ -151,25 +150,25 @@ class AskRequest(BaseModel):
 
 class CompetitiveRequest(BaseModel):
     query: str = Field(
-        ..., 
-        description="Competitive analysis prompt", 
+        ...,
+        description="Competitive analysis prompt",
         examples=["Compare market share and battery technology of competitors"]
     )
     company: str = Field(
-        "", 
-        description="Target company name (optional)", 
+        "",
+        description="Target company name (optional)",
         examples=["Tata Motors"]
     )
 
 
 class ResearchRequest(BaseModel):
     query: str = Field(
-        ..., 
-        description="Comprehensive research topic", 
+        ...,
+        description="Comprehensive research topic",
         examples=["Solid-state battery commercialization timeline"]
     )
     include_competitive: bool = Field(
-        True, 
+        True,
         description="Include competitive intelligence from Azure Agent",
         examples=[True]
     )
@@ -188,7 +187,7 @@ class AgentResponse(BaseModel):
 
 # ── Health & Readiness Check ──────────────────────────────────────────────────
 @app.get(
-    "/health", 
+    "/health",
     tags=["System"],
     summary="Get Liveness Health Status",
     response_description="Returns 200 and liveness indicators if the server is up."
@@ -204,7 +203,7 @@ async def health():
 
 
 @app.get(
-    "/readiness", 
+    "/readiness",
     tags=["System"],
     summary="Get Readiness Probe Status",
     response_description="Returns 200 if key environment variables are set, otherwise 503."
@@ -217,7 +216,7 @@ async def readiness():
         "AZURE_OPENAI_DEPLOYMENT"
     ]
     missing = [var for var in required_vars if not os.environ.get(var)]
-    
+
     if missing:
         raise HTTPException(
             status_code=503,
@@ -231,8 +230,8 @@ async def readiness():
 
 # ── Main Pipeline: POST /ask ─────────────────────────────────────────────────
 @app.post(
-    "/ask", 
-    response_model=AgentResponse, 
+    "/ask",
+    response_model=AgentResponse,
     tags=["Research Pipeline"],
     summary="Execute Multi-Agent Research",
     response_description="Returns the structured research report and metadata."
@@ -301,12 +300,12 @@ async def ask(request: AskRequest):
 
     except Exception as e:
         logger.error("api_ask_error", error=str(e))
-        raise HTTPException(status_code=500, detail=f"Pipeline error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Pipeline error: {str(e)}") from e
 
 
 # ── Competitive Analysis: POST /competitive ───────────────────────────────────
 @app.post(
-    "/competitive", 
+    "/competitive",
     tags=["Competitive Intelligence"],
     summary="Fetch Competitive Intelligence",
     response_description="Returns competitive analysis or falls back to local analyst."
@@ -355,7 +354,7 @@ async def competitive_analysis(request: CompetitiveRequest):
             content=query,
         )
 
-        run = client.agents.create_and_process_run(
+        client.agents.create_and_process_run(
             thread_id=thread.id,
             agent_id=agent_name,
         )
@@ -406,12 +405,12 @@ async def competitive_analysis(request: CompetitiveRequest):
                 "timestamp": datetime.utcnow().isoformat(),
             }
         except Exception as e2:
-            raise HTTPException(status_code=500, detail=f"Both competitive agent and fallback failed: {str(e2)}")
+            raise HTTPException(status_code=500, detail=f"Both competitive agent and fallback failed: {str(e2)}") from e2
 
 
 # ── Combined Research: POST /research ────────────────────────────────────────
 @app.post(
-    "/research", 
+    "/research",
     tags=["Research Pipeline"],
     summary="Combined Research & Competitive Intelligence",
     response_description="Returns deep research combined with competitive insights."

@@ -1,7 +1,9 @@
 # Agents package
-from pydantic import BaseModel, Field, field_validator, model_validator
 from enum import Enum
 from typing import Any
+
+from pydantic import BaseModel, Field, field_validator, model_validator
+
 
 # --- Task & Plan Models ---
 class TaskType(str, Enum):
@@ -50,7 +52,7 @@ class SubTask(BaseModel):
                 data["id"] = data["task_id"]
             elif "id" in data and not data.get("task_id"):
                 data["task_id"] = data["id"]
-            
+
             # Sync task_type and type
             if "task_type" in data and not data.get("type"):
                 data["type"] = str(data["task_type"])

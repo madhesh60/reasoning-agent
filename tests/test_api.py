@@ -1,9 +1,11 @@
-import pytest
-from httpx import AsyncClient, ASGITransport
-from unittest.mock import AsyncMock, patch
 import os
+from unittest.mock import AsyncMock, patch
+
+import pytest
+from httpx import ASGITransport, AsyncClient
 
 from main import app
+
 
 @pytest.mark.asyncio
 async def test_health_endpoint():
@@ -24,7 +26,7 @@ async def test_readiness_endpoint():
         "AZURE_OPENAI_API_KEY": "test-key",
         "AZURE_OPENAI_DEPLOYMENT": "test-deployment"
     }
-    
+
     # 1. Missing case
     with patch.dict(os.environ, {}, clear=True):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -52,10 +54,10 @@ async def test_ask_endpoint():
             "failed_tasks": []
         }
     }
-    
+
     with patch("src.orchestration.research_workflow.ResearchWorkflow.execute", new_callable=AsyncMock) as mock_execute:
         mock_execute.return_value = mock_workflow_result
-        
+
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
             payload = {
                 "query": "test query",
@@ -82,7 +84,7 @@ async def test_ask_endpoint_validation():
         }
         response = await ac.post("/ask", json=payload)
         assert response.status_code == 422
-        
+
         payload["max_retries"] = 6
         response = await ac.post("/ask", json=payload)
         assert response.status_code == 422

@@ -4,10 +4,9 @@ Test suite for Research-to-Report Multi-Agent System
 This test suite validates the individual agents, orchestration, and protocol implementations.
 """
 
-import pytest
-import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
+import pytest
 
 # Test configuration
 TEST_QUERY = "What are the top 3 investment risks in the Indian EV market?"
@@ -164,7 +163,13 @@ class TestPlannerAgent:
     async def test_validate_plan(self, mock_llm, mock_config):
         """Test plan validation."""
         with patch("src.utils.config.get_azure_openai_config", return_value=mock_config):
-            from src.agents.planner import PlannerAgent, ResearchPlan, SubTask, TaskType, TaskPriority
+            from src.agents.planner import (
+                PlannerAgent,
+                ResearchPlan,
+                SubTask,
+                TaskPriority,
+                TaskType,
+            )
 
             agent = PlannerAgent(llm=mock_llm)
 

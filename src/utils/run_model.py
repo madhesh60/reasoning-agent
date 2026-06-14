@@ -11,14 +11,14 @@ import os
 import sys
 from pathlib import Path
 
+from dotenv import load_dotenv
+from openai import OpenAI
+
 # Ensure project root is on sys.path when run directly
 project_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(project_root))
 
-from dotenv import load_dotenv
 load_dotenv(project_root / ".env")
-
-from openai import OpenAI
 
 # ── Connection details pulled from .env ─────────────────────────────────────
 ENDPOINT = os.environ["AZURE_OPENAI_ENDPOINT"]          # e.g. https://<res>.services.ai.azure.com/openai/v1

@@ -12,12 +12,12 @@ The MCP protocol allows agents to access tools like:
 Reference: Microsoft MCP Protocol Specification
 """
 
-from typing import Any, Literal
-import json
-import structlog
 from dataclasses import dataclass
 from enum import Enum
+from typing import Any
+
 import httpx
+import structlog
 
 logger = structlog.get_logger(__name__)
 
@@ -114,13 +114,13 @@ class MCPWebSearchTool:
         """Parse the structured Azure AI Web Search response text into detailed SearchResults."""
         import re
         results = []
-        
+
         # Extract markdown links pattern: [anchor](url)
         link_pattern = re.compile(r'\[([^\]]+)\]\((https?://[^\s)]+)\)')
-        
+
         # Split text into sections by Markdown headings
         sections = re.split(r'\n(?:###|##)\s+', text)
-        
+
         # The first section is usually the intro
         intro = sections[0].strip() if sections else ""
         if intro:
@@ -135,23 +135,23 @@ class MCPWebSearchTool:
                 "relevance_score": 1.0,
                 "authority_score": 0.9
             })
-            
+
         # Process other sections
         for i, section in enumerate(sections[1:]):
             section = section.strip()
             if not section:
                 continue
-                
+
             # Split title and content
             lines = section.split('\n', 1)
             title = lines[0].strip('* \t')
             content = lines[1].strip() if len(lines) > 1 else ""
-            
+
             if not content:
                 content = title
-                
+
             links = link_pattern.findall(content)
-            
+
             if links:
                 # Create a SearchResult for each unique link in this section
                 seen_urls = set()
@@ -159,7 +159,7 @@ class MCPWebSearchTool:
                     if url in seen_urls:
                         continue
                     seen_urls.add(url)
-                    
+
                     results.append({
                         "title": f"{title} ({anchor})",
                         "url": url,
@@ -178,14 +178,14 @@ class MCPWebSearchTool:
                     "relevance_score": max(0.4, 0.8 - (i * 0.05)),
                     "authority_score": 0.7
                 })
-                
+
         return results
 
     async def _execute_azure_search(self, query: str, max_results: int) -> SearchResponse:
         """Execute search using Azure AI Project MCP Toolbox (HTTP JSON-RPC) with retries."""
-        import time
-        import os
         import asyncio
+        import os
+        import time
         start_time = time.time()
 
         logger.info(
@@ -199,16 +199,16 @@ class MCPWebSearchTool:
             mcp_url = os.getenv("MCP_SERVER_URL")
             if not mcp_url:
                 raise ValueError("MCP_SERVER_URL environment variable is not set")
-                
+
             headers = {
-                "Authorization": f"Bearer {self.azure_openai_api_key}", 
+                "Authorization": f"Bearer {self.azure_openai_api_key}",
                 "Content-Type": "application/json"
             }
             payload = {
                 "jsonrpc": "2.0", "id": 1, "method": "tools/call",
                 "params": {"name": "web_search", "arguments": {"search_query": query}}
             }
-            
+
             # Retry loop with exponential backoff
             max_attempts = 3
             backoff_base = 2.0
@@ -230,7 +230,7 @@ class MCPWebSearchTool:
                     await asyncio.sleep(backoff_base ** attempt)
 
             data = response.json()
-            
+
             # Extract content from MCP JSON-RPC response
             results_raw = []
             if "result" in data and "content" in data["result"]:
@@ -239,12 +239,13 @@ class MCPWebSearchTool:
                     # Combine all text blocks and parse them
                     combined_text = ""
                     for c in content_list:
-                        if not isinstance(c, dict): continue
+                        if not isinstance(c, dict):
+                            continue
                         if "text" in c:
                             combined_text += c["text"] + "\n"
                         elif "resource" in c and "text" in c["resource"]:
                             combined_text += c["resource"]["text"] + "\n"
-                            
+
                     if combined_text:
                         results_raw = self._parse_azure_search_response(combined_text, query)
 
@@ -252,12 +253,13 @@ class MCPWebSearchTool:
             if not results_raw and "result" in data and "content" in data["result"]:
                 combined_text = ""
                 for c in data["result"]["content"]:
-                    if not isinstance(c, dict): continue
+                    if not isinstance(c, dict):
+                        continue
                     if "text" in c:
                         combined_text += c["text"] + "\n"
                     elif "resource" in c and "text" in c["resource"]:
                         combined_text += c["resource"]["text"] + "\n"
-                        
+
                 if combined_text.strip():
                      results_raw = [{"title": f"Search Results for '{query}'", "url": "https://bing.com", "snippet": combined_text.strip(), "source": "Bing MCP", "relevance_score": 1.0, "authority_score": 1.0}]
 
@@ -279,7 +281,7 @@ class MCPWebSearchTool:
                 query=query, results=search_results,
                 total_results=len(search_results),
                 execution_time_ms=execution_time,
-                sources=list(set(r.source for r in search_results))
+                sources=list({r.source for r in search_results})
             )
 
         except Exception as e:
@@ -348,7 +350,7 @@ class MCPWebSearchTool:
                 results=results,
                 total_results=len(results),
                 execution_time_ms=execution_time,
-                sources=list(set([r.source for r in results]))
+                sources=list({r.source for r in results})
             )
 
             logger.info(
@@ -634,7 +636,7 @@ async def main():
     """Demo function for testing MCP tools."""
     import sys
     from pathlib import Path
-    
+
     # Add project root to python path so 'src' can be imported when running standalone
     project_root = str(Path(__file__).resolve().parents[2])
     if project_root not in sys.path:

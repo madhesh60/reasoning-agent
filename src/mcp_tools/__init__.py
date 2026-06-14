@@ -1,4 +1,4 @@
 # MCP Tools package
-from .web_search import MCPWebSearchTool, MCPDocumentSearchTool, SearchResult, SearchResponse
+from .web_search import MCPDocumentSearchTool, MCPWebSearchTool, SearchResponse, SearchResult
 
 __all__ = ["MCPWebSearchTool", "MCPDocumentSearchTool", "SearchResult", "SearchResponse"]

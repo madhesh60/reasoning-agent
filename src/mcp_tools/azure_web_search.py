@@ -13,6 +13,7 @@ Or import create_agent_with_toolbox / call_agent_with_toolbox from elsewhere.
 import asyncio
 import os
 from pathlib import Path
+from urllib.parse import urlparse as _up
 
 from dotenv import load_dotenv
 
@@ -30,7 +31,7 @@ API_KEY          = os.environ["AZURE_OPENAI_API_KEY"]
 # Derive the OpenAI-compatible endpoint from the project endpoint
 # e.g. https://<resource>.services.ai.azure.com/api/projects/<name>
 #   -> https://<resource>.services.ai.azure.com/openai/v1
-from urllib.parse import urlparse as _up
+
 _p = _up(ENDPOINT)
 AZURE_OPENAI_ENDPOINT = os.environ.get(
     "AZURE_OPENAI_ENDPOINT",
@@ -47,9 +48,9 @@ async def create_agent_with_toolbox():
     """Create a LangGraph ReAct agent wired to the Foundry Bing toolbox via MCP."""
     global _agent
 
-    from langchain_openai import ChatOpenAI
-    from langchain_core.tools import Tool
     import httpx
+    from langchain_core.tools import Tool
+    from langchain_openai import ChatOpenAI
 
     print(f"[toolbox] Connecting to project  : {ENDPOINT}")
     print(f"[toolbox] Toolbox                : {TOOLBOX_NAME} v{TOOLBOX_VERSION}")
@@ -106,9 +107,11 @@ async def create_agent_with_toolbox():
             self.tools = {t.name: t for t in tools}
 
         async def ainvoke(self, input_dict: dict, config: dict | None = None) -> dict:
-            from langchain_core.messages import AIMessage, ToolMessage, SystemMessage, HumanMessage
-            from src.utils.config import clean_and_parse_json
             import uuid
+
+            from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+
+            from src.utils.config import clean_and_parse_json
 
             raw_messages = input_dict.get("messages", [])
             messages = []
@@ -126,9 +129,9 @@ async def create_agent_with_toolbox():
 
             from datetime import datetime
             today_str = datetime.now().strftime("%Y-%m-%d")
-            
+
             system_prompt = (
-                f"You are a helpful assistant with access to the following tools:\n"
+                "You are a helpful assistant with access to the following tools:\n"
                 + "\n".join([f"- {t.name}: {t.description}" for t in self.tools.values()])
                 + f"\n\nToday's date is {today_str}. If the user asks you to search the web, gather information, or asks about recent/current events, "
                 "you MUST call the 'bing_web_search' tool first to retrieve the facts. Do not answer from your pre-trained knowledge directly without searching.\n\n"
@@ -151,7 +154,7 @@ async def create_agent_with_toolbox():
 
             run_messages = [SystemMessage(content=system_prompt)] + messages
 
-            for iteration in range(5):
+            for _ in range(5):
                 response = await self.llm.ainvoke(run_messages)
                 content = response.content
 
@@ -285,10 +288,10 @@ async def main():
 if __name__ == "__main__":
     import sys
     from pathlib import Path
-    
+
     # Add project root to python path so 'src' can be imported when running standalone
     project_root = str(Path(__file__).resolve().parents[2])
     if project_root not in sys.path:
         sys.path.insert(0, project_root)
-        
+
     asyncio.run(main())
