@@ -201,7 +201,7 @@ class ResearchWorkflow:
         self,
         enable_a2a: bool = True,
         enable_mcp: bool = False,
-        max_retries: int = 1,
+        max_retries: int = 3,
         memory_db_path: str = "memory.sqlite",
     ):
         self.enable_a2a  = enable_a2a

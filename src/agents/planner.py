@@ -6,6 +6,7 @@ from src.agents import (
     ResearchPlan,
     SubTask,
     TaskType,
+    TaskPriority,
 )
 
-__all__ = ["PlannerAgent", "ResearchPlan", "SubTask", "TaskType"]
+__all__ = ["PlannerAgent", "ResearchPlan", "SubTask", "TaskType", "TaskPriority"]
