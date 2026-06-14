@@ -41,31 +41,60 @@ jobs:
           echo "username=$ACR_USER" >> $GITHUB_OUTPUT
           echo "password=$ACR_PASS" >> $GITHUB_OUTPUT
 
-      - name: Delete failed Container App (if exists)
-        continue-on-error: true
+      - name: Deploy to Azure Container Apps
         run: |
-          az containerapp delete \
+          IMAGE="${{ env.ACR_NAME }}.azurecr.io/reasoning-agent:${{ github.sha }}"
+          ACR_USER="${{ steps.get-acr-creds.outputs.username }}"
+          ACR_PASS="${{ steps.get-acr-creds.outputs.password }}"
+
+          ENV_VARS="AZURE_OPENAI_ENDPOINT=${{ secrets.AZURE_OPENAI_ENDPOINT }} \
+            AZURE_OPENAI_API_KEY=${{ secrets.AZURE_OPENAI_API_KEY }} \
+            AZURE_OPENAI_DEPLOYMENT=${{ secrets.AZURE_OPENAI_DEPLOYMENT }} \
+            MCP_SERVER_URL=${{ secrets.MCP_SERVER_URL }} \
+            MCP_AUTH_TOKEN=${{ secrets.MCP_AUTH_TOKEN }} \
+            AZURE_EXISTING_AGENT_ID=${{ secrets.AZURE_EXISTING_AGENT_ID }} \
+            AZURE_EXISTING_AIPROJECT_ENDPOINT=${{ secrets.AZURE_EXISTING_AIPROJECT_ENDPOINT }}"
+
+          # Check if Container App exists and its provisioning state
+          PROVISIONING_STATE=$(az containerapp show \
             --name ${{ env.CONTAINER_APP_NAME }} \
             --resource-group ${{ env.RESOURCE_GROUP }} \
-            --yes
+            --query "properties.provisioningState" -o tsv 2>/dev/null || echo "NotFound")
 
-      - name: Deploy to Azure Container Apps
-        uses: azure/container-apps-deploy-action@v1
-        with:
-          appSourcePath: ${{ github.workspace }}
-          registryUrl: ${{ env.ACR_NAME }}.azurecr.io
-          registryUsername: ${{ steps.get-acr-creds.outputs.username }}
-          registryPassword: ${{ steps.get-acr-creds.outputs.password }}
-          containerAppName: ${{ env.CONTAINER_APP_NAME }}
-          resourceGroup: ${{ env.RESOURCE_GROUP }}
-          imageToDeploy: ${{ env.ACR_NAME }}.azurecr.io/reasoning-agent:${{ github.sha }}
-          ingress: external
-          targetPort: 8000
-          environmentVariables: >-
-            AZURE_OPENAI_ENDPOINT=${{ secrets.AZURE_OPENAI_ENDPOINT }}
-            AZURE_OPENAI_API_KEY=${{ secrets.AZURE_OPENAI_API_KEY }}
-            AZURE_OPENAI_DEPLOYMENT=${{ secrets.AZURE_OPENAI_DEPLOYMENT }}
-            MCP_SERVER_URL=${{ secrets.MCP_SERVER_URL }}
-            MCP_AUTH_TOKEN=${{ secrets.MCP_AUTH_TOKEN }}
-            AZURE_EXISTING_AGENT_ID=${{ secrets.AZURE_EXISTING_AGENT_ID }}
-            AZURE_EXISTING_AIPROJECT_ENDPOINT=${{ secrets.AZURE_EXISTING_AIPROJECT_ENDPOINT }}
+          echo "Current provisioning state: $PROVISIONING_STATE"
+
+          # Delete if stuck in failed state
+          if [ "$PROVISIONING_STATE" = "Failed" ]; then
+            echo "Container App is in Failed state, deleting before recreation..."
+            az containerapp delete \
+              --name ${{ env.CONTAINER_APP_NAME }} \
+              --resource-group ${{ env.RESOURCE_GROUP }} \
+              --yes
+            PROVISIONING_STATE="NotFound"
+          fi
+
+          # Create or update
+          if [ "$PROVISIONING_STATE" = "NotFound" ]; then
+            echo "Creating new Container App..."
+            az containerapp create \
+              --name ${{ env.CONTAINER_APP_NAME }} \
+              --resource-group ${{ env.RESOURCE_GROUP }} \
+              --environment reasoning-agent-env \
+              --image "$IMAGE" \
+              --registry-server "${{ env.ACR_NAME }}.azurecr.io" \
+              --registry-username "$ACR_USER" \
+              --registry-password "$ACR_PASS" \
+              --target-port 8000 \
+              --ingress external \
+              --min-replicas 0 \
+              --max-replicas 3 \
+              --env-vars $ENV_VARS
+          else
+            echo "Updating existing Container App..."
+            az containerapp update \
+              --name ${{ env.CONTAINER_APP_NAME }} \
+              --resource-group ${{ env.RESOURCE_GROUP }} \
+              --image "$IMAGE" \
+              --set-env-vars $ENV_VARS
+          fi
+
