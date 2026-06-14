@@ -24,6 +24,7 @@ logger = structlog.get_logger(__name__)
 
 class SearchEngine(str, Enum):
     """Supported search engines."""
+
     BING = "bing"
     DUCKDUCKGO = "duckduckgo"
     GOOGLE = "google"
@@ -33,6 +34,7 @@ class SearchEngine(str, Enum):
 @dataclass
 class SearchResult:
     """Standardized search result format."""
+
     title: str
     url: str
     snippet: str
@@ -45,6 +47,7 @@ class SearchResult:
 @dataclass
 class SearchResponse:
     """Response from web search operation."""
+
     query: str
     results: list[SearchResult]
     total_results: int
@@ -68,7 +71,7 @@ class MCPWebSearchTool:
         azure_project_endpoint: str | None = None,
         azure_toolbox_name: str | None = None,
         azure_toolbox_version: str | None = None,
-        azure_openai_api_key: str | None = None
+        azure_openai_api_key: str | None = None,
     ):
         """
         Initialize the MCP web search tool.
@@ -83,20 +86,25 @@ class MCPWebSearchTool:
             azure_openai_api_key: API Key for Azure AI Foundry tools authentication
         """
         import os
+
         self.mcp_server_url = mcp_server_url.rstrip("/")
         self.api_key = api_key
         self.timeout = timeout
         self._client = httpx.AsyncClient(timeout=httpx.Timeout(timeout))
 
         self.azure_project_endpoint = azure_project_endpoint or os.getenv("AZURE_PROJECT_ENDPOINT")
-        self.azure_toolbox_name = azure_toolbox_name or os.getenv("AZURE_TOOLBOX_NAME", "reasoning-agent-web-search")
-        self.azure_toolbox_version = azure_toolbox_version or os.getenv("AZURE_TOOLBOX_VERSION", "1")
+        self.azure_toolbox_name = azure_toolbox_name or os.getenv(
+            "AZURE_TOOLBOX_NAME", "reasoning-agent-web-search"
+        )
+        self.azure_toolbox_version = azure_toolbox_version or os.getenv(
+            "AZURE_TOOLBOX_VERSION", "1"
+        )
         self.azure_openai_api_key = azure_openai_api_key or os.getenv("AZURE_OPENAI_API_KEY")
 
         logger.info(
             "mcp_web_search_initialized",
             server_url=mcp_server_url,
-            use_azure_toolbox=self.azure_project_endpoint is not None
+            use_azure_toolbox=self.azure_project_endpoint is not None,
         )
 
     def _build_headers(self) -> dict[str, str]:
@@ -104,7 +112,7 @@ class MCPWebSearchTool:
         headers = {
             "Content-Type": "application/json",
             "User-Agent": "MCP-Client/1.0",
-            "X-MCP-Protocol-Version": "1.0"
+            "X-MCP-Protocol-Version": "1.0",
         }
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
@@ -113,13 +121,14 @@ class MCPWebSearchTool:
     def _parse_azure_search_response(self, text: str, query: str) -> list[dict[str, Any]]:
         """Parse the structured Azure AI Web Search response text into detailed SearchResults."""
         import re
+
         results = []
 
         # Extract markdown links pattern: [anchor](url)
-        link_pattern = re.compile(r'\[([^\]]+)\]\((https?://[^\s)]+)\)')
+        link_pattern = re.compile(r"\[([^\]]+)\]\((https?://[^\s)]+)\)")
 
         # Split text into sections by Markdown headings
-        sections = re.split(r'\n(?:###|##)\s+', text)
+        sections = re.split(r"\n(?:###|##)\s+", text)
 
         # The first section is usually the intro
         intro = sections[0].strip() if sections else ""
@@ -127,14 +136,16 @@ class MCPWebSearchTool:
             intro_links = link_pattern.findall(intro)
             primary_url = intro_links[0][1] if intro_links else "https://ai.azure.com"
             primary_source = intro_links[0][0] if intro_links else "Azure AI Web Search"
-            results.append({
-                "title": f"Web Search Summary: {query}",
-                "url": primary_url,
-                "snippet": intro,
-                "source": primary_source,
-                "relevance_score": 1.0,
-                "authority_score": 0.9
-            })
+            results.append(
+                {
+                    "title": f"Web Search Summary: {query}",
+                    "url": primary_url,
+                    "snippet": intro,
+                    "source": primary_source,
+                    "relevance_score": 1.0,
+                    "authority_score": 0.9,
+                }
+            )
 
         # Process other sections
         for i, section in enumerate(sections[1:]):
@@ -143,8 +154,8 @@ class MCPWebSearchTool:
                 continue
 
             # Split title and content
-            lines = section.split('\n', 1)
-            title = lines[0].strip('* \t')
+            lines = section.split("\n", 1)
+            title = lines[0].strip("* \t")
             content = lines[1].strip() if len(lines) > 1 else ""
 
             if not content:
@@ -160,24 +171,28 @@ class MCPWebSearchTool:
                         continue
                     seen_urls.add(url)
 
-                    results.append({
-                        "title": f"{title} ({anchor})",
-                        "url": url,
-                        "snippet": content,
-                        "source": anchor,
-                        "relevance_score": max(0.4, 0.9 - (i * 0.05)),
-                        "authority_score": 0.8
-                    })
+                    results.append(
+                        {
+                            "title": f"{title} ({anchor})",
+                            "url": url,
+                            "snippet": content,
+                            "source": anchor,
+                            "relevance_score": max(0.4, 0.9 - (i * 0.05)),
+                            "authority_score": 0.8,
+                        }
+                    )
             else:
                 # Default result if no links are found
-                results.append({
-                    "title": title,
-                    "url": "https://ai.azure.com",
-                    "snippet": content,
-                    "source": "Azure AI Web Search",
-                    "relevance_score": max(0.4, 0.8 - (i * 0.05)),
-                    "authority_score": 0.7
-                })
+                results.append(
+                    {
+                        "title": title,
+                        "url": "https://ai.azure.com",
+                        "snippet": content,
+                        "source": "Azure AI Web Search",
+                        "relevance_score": max(0.4, 0.8 - (i * 0.05)),
+                        "authority_score": 0.7,
+                    }
+                )
 
         return results
 
@@ -186,13 +201,14 @@ class MCPWebSearchTool:
         import asyncio
         import os
         import time
+
         start_time = time.time()
 
         logger.info(
             "azure_toolbox_search_start",
             query=query[:50],
             project_endpoint=self.azure_project_endpoint,
-            toolbox=self.azure_toolbox_name
+            toolbox=self.azure_toolbox_name,
         )
 
         try:
@@ -202,11 +218,13 @@ class MCPWebSearchTool:
 
             headers = {
                 "Authorization": f"Bearer {self.azure_openai_api_key}",
-                "Content-Type": "application/json"
+                "Content-Type": "application/json",
             }
             payload = {
-                "jsonrpc": "2.0", "id": 1, "method": "tools/call",
-                "params": {"name": "web_search", "arguments": {"search_query": query}}
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/call",
+                "params": {"name": "web_search", "arguments": {"search_query": query}},
             }
 
             # Retry loop with exponential backoff
@@ -223,11 +241,11 @@ class MCPWebSearchTool:
                         "azure_toolbox_search_attempt_failed",
                         attempt=attempt,
                         max_attempts=max_attempts,
-                        error=str(e)
+                        error=str(e),
                     )
                     if attempt == max_attempts:
                         raise e
-                    await asyncio.sleep(backoff_base ** attempt)
+                    await asyncio.sleep(backoff_base**attempt)
 
             data = response.json()
 
@@ -261,27 +279,43 @@ class MCPWebSearchTool:
                         combined_text += c["resource"]["text"] + "\n"
 
                 if combined_text.strip():
-                     results_raw = [{"title": f"Search Results for '{query}'", "url": "https://bing.com", "snippet": combined_text.strip(), "source": "Bing MCP", "relevance_score": 1.0, "authority_score": 1.0}]
+                    results_raw = [
+                        {
+                            "title": f"Search Results for '{query}'",
+                            "url": "https://bing.com",
+                            "snippet": combined_text.strip(),
+                            "source": "Bing MCP",
+                            "relevance_score": 1.0,
+                            "authority_score": 1.0,
+                        }
+                    ]
 
             search_results = [
                 SearchResult(
-                    title=r["title"], url=r["url"], snippet=r["snippet"],
+                    title=r["title"],
+                    url=r["url"],
+                    snippet=r["snippet"],
                     source=r["source"],
                     relevance_score=r.get("relevance_score", 0.8),
-                    authority_score=r.get("authority_score", 0.8)
+                    authority_score=r.get("authority_score", 0.8),
                 )
                 for r in results_raw[:max_results]
             ]
 
             execution_time = (time.time() - start_time) * 1000
-            logger.info("azure_toolbox_search_complete", query=query[:50],
-                        results_count=len(search_results), execution_time_ms=execution_time)
+            logger.info(
+                "azure_toolbox_search_complete",
+                query=query[:50],
+                results_count=len(search_results),
+                execution_time_ms=execution_time,
+            )
 
             return SearchResponse(
-                query=query, results=search_results,
+                query=query,
+                results=search_results,
                 total_results=len(search_results),
                 execution_time_ms=execution_time,
-                sources=list({r.source for r in search_results})
+                sources=list({r.source for r in search_results}),
             )
 
         except Exception as e:
@@ -294,7 +328,7 @@ class MCPWebSearchTool:
         max_results: int = 10,
         search_engine: SearchEngine = SearchEngine.BING,
         language: str = "en",
-        safe_search: bool = True
+        safe_search: bool = True,
     ) -> SearchResponse:
         """
         Execute a web search using MCP tools.
@@ -314,13 +348,14 @@ class MCPWebSearchTool:
             return await self._execute_azure_search(query, max_results)
 
         import time
+
         start_time = time.time()
 
         logger.info(
             "mcp_search_start",
             query=query[:50],
             max_results=max_results,
-            engine=search_engine.value
+            engine=search_engine.value,
         )
 
         try:
@@ -333,8 +368,8 @@ class MCPWebSearchTool:
                     "max_results": max_results,
                     "search_engine": search_engine.value,
                     "language": language,
-                    "safe_search": safe_search
-                }
+                    "safe_search": safe_search,
+                },
             }
 
             # Execute search via MCP
@@ -350,14 +385,14 @@ class MCPWebSearchTool:
                 results=results,
                 total_results=len(results),
                 execution_time_ms=execution_time,
-                sources=list({r.source for r in results})
+                sources=list({r.source for r in results}),
             )
 
             logger.info(
                 "mcp_search_complete",
                 query=query[:50],
                 results_count=len(results),
-                execution_time_ms=execution_time
+                execution_time_ms=execution_time,
             )
 
             return search_response
@@ -369,7 +404,7 @@ class MCPWebSearchTool:
                 results=[],
                 total_results=0,
                 execution_time_ms=(time.time() - start_time) * 1000,
-                sources=[]
+                sources=[],
             )
 
     async def _execute_mcp_call(self, payload: dict[str, Any]) -> dict[str, Any]:
@@ -382,11 +417,7 @@ class MCPWebSearchTool:
         response = None
         for attempt in range(1, max_attempts + 1):
             try:
-                response = await self._client.post(
-                    url,
-                    json=payload,
-                    headers=self._build_headers()
-                )
+                response = await self._client.post(url, json=payload, headers=self._build_headers())
                 response.raise_for_status()
                 break
             except (httpx.HTTPError, httpx.TimeoutException) as e:
@@ -394,11 +425,11 @@ class MCPWebSearchTool:
                     "mcp_server_call_attempt_failed",
                     attempt=attempt,
                     max_attempts=max_attempts,
-                    error=str(e)
+                    error=str(e),
                 )
                 if attempt == max_attempts:
                     raise e
-                await asyncio.sleep(backoff_base ** attempt)
+                await asyncio.sleep(backoff_base**attempt)
 
         return response.json()
 
@@ -416,7 +447,7 @@ class MCPWebSearchTool:
                 source=result.get("source", result.get("displayLink", "Unknown")),
                 published_date=result.get("publishedDate"),
                 relevance_score=1.0 - (i * 0.1),  # Higher = more relevant
-                authority_score=result.get("authority", 0.7)
+                authority_score=result.get("authority", 0.7),
             )
             results.append(search_result)
 
@@ -435,18 +466,22 @@ class MCPWebSearchTool:
         results = []
         for i in range(min(max_results, len(sources))):
             source = sources[i]
-            results.append({
-                "title": f"{query.title()} - {source['name']} Analysis",
-                "url": f"https://www.{source['name'].lower().replace(' ', '')}.com/article/{i+1}",
-                "snippet": f"Comprehensive analysis and data-driven insights on {query} with market trends and expert opinions.",
-                "source": source["name"],
-                "publishedDate": "2024-06-01",
-                "authority": source["authority"]
-            })
+            results.append(
+                {
+                    "title": f"{query.title()} - {source['name']} Analysis",
+                    "url": f"https://www.{source['name'].lower().replace(' ', '')}.com/article/{i+1}",
+                    "snippet": f"Comprehensive analysis and data-driven insights on {query} with market trends and expert opinions.",
+                    "source": source["name"],
+                    "publishedDate": "2024-06-01",
+                    "authority": source["authority"],
+                }
+            )
 
         return {"results": results}
 
-    async def batch_search(self, queries: list[str], max_results_per_query: int = 5) -> list[SearchResponse]:
+    async def batch_search(
+        self, queries: list[str], max_results_per_query: int = 5
+    ) -> list[SearchResponse]:
         """
         Execute multiple searches in parallel.
 
@@ -461,10 +496,7 @@ class MCPWebSearchTool:
 
         import asyncio
 
-        tasks = [
-            self.search(query, max_results_per_query)
-            for query in queries
-        ]
+        tasks = [self.search(query, max_results_per_query) for query in queries]
 
         responses = await asyncio.gather(*tasks)
 
@@ -473,10 +505,7 @@ class MCPWebSearchTool:
         return responses
 
     async def search_news(
-        self,
-        query: str,
-        max_results: int = 10,
-        days_back: int = 7
+        self, query: str, max_results: int = 10, days_back: int = 7
     ) -> SearchResponse:
         """
         Search for recent news articles.
@@ -491,11 +520,7 @@ class MCPWebSearchTool:
         """
         logger.info("mcp_news_search_start", query=query[:50], days_back=days_back)
 
-        return await self.search(
-            query=query,
-            max_results=max_results,
-            safe_search=True
-        )
+        return await self.search(query=query, max_results=max_results, safe_search=True)
 
     async def close(self):
         """Close the HTTP client."""
@@ -514,7 +539,7 @@ class MCPDocumentSearchTool:
         azure_search_endpoint: str | None = None,
         azure_search_key: str | None = None,
         index_name: str = "default",
-        timeout: int = 30
+        timeout: int = 30,
     ):
         """
         Initialize the MCP document search tool.
@@ -536,16 +561,11 @@ class MCPDocumentSearchTool:
             self._client = None
 
         logger.info(
-            "mcp_document_search_initialized",
-            endpoint=azure_search_endpoint,
-            index=index_name
+            "mcp_document_search_initialized", endpoint=azure_search_endpoint, index=index_name
         )
 
     async def search_documents(
-        self,
-        query: str,
-        max_results: int = 10,
-        filters: dict[str, Any] | None = None
+        self, query: str, max_results: int = 10, filters: dict[str, Any] | None = None
     ) -> dict[str, Any]:
         """
         Search documents in the index.
@@ -566,12 +586,7 @@ class MCPDocumentSearchTool:
         try:
             url = f"{self.azure_search_endpoint}/indexes/{self.index_name}/docs/search"
 
-            payload = {
-                "search": query,
-                "top": max_results,
-                "select": "*",
-                "searchMode": "any"
-            }
+            payload = {"search": query, "top": max_results, "select": "*", "searchMode": "any"}
 
             if filters:
                 payload["filter"] = self._build_filter_string(filters)
@@ -579,10 +594,7 @@ class MCPDocumentSearchTool:
             response = await self._client.post(
                 url,
                 json=payload,
-                headers={
-                    "Content-Type": "application/json",
-                    "api-key": self.azure_search_key
-                }
+                headers={"Content-Type": "application/json", "api-key": self.azure_search_key},
             )
 
             response.raise_for_status()
@@ -591,7 +603,7 @@ class MCPDocumentSearchTool:
             return {
                 "results": data.get("value", []),
                 "total": data.get("@odata.count", len(data.get("value", []))),
-                "query": query
+                "query": query,
             }
 
         except Exception as e:
@@ -618,7 +630,7 @@ def create_web_search_tool(config: dict[str, Any]) -> MCPWebSearchTool:
     return MCPWebSearchTool(
         mcp_server_url=config.get("mcp_server_url", "https://mcp.ai.azure.com"),
         api_key=config.get("api_key"),
-        timeout=config.get("timeout", 15)
+        timeout=config.get("timeout", 15),
     )
 
 
@@ -628,7 +640,7 @@ def create_document_search_tool(config: dict[str, Any]) -> MCPDocumentSearchTool
         azure_search_endpoint=config.get("azure_search_endpoint"),
         azure_search_key=config.get("azure_search_key"),
         index_name=config.get("index_name", "default"),
-        timeout=config.get("timeout", 30)
+        timeout=config.get("timeout", 30),
     )
 
 
@@ -643,6 +655,7 @@ async def main():
         sys.path.insert(0, project_root)
 
     from src.utils.config import load_environment
+
     load_environment()
 
     print("=" * 60)
@@ -681,7 +694,9 @@ async def main():
             print(f"   Source: {result.source}")
             print(f"   Relevance: {result.relevance_score:.2f}")
             print(f"   Authority: {result.authority_score:.2f}")
-            print(f"   Snippet: {result.snippet[:100].encode('ascii', 'ignore').decode('ascii')}...")
+            print(
+                f"   Snippet: {result.snippet[:100].encode('ascii', 'ignore').decode('ascii')}..."
+            )
 
     await tool.close()
 
@@ -690,4 +705,5 @@ async def main():
 
 if __name__ == "__main__":
     import asyncio
+
     asyncio.run(main())

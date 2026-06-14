@@ -26,7 +26,7 @@ class MockLLM:
         # Generate mock response based on the message content
         if "decompos" in str(last_message).lower():
             print("MOCK_LLM: Matched DECOMPOSE branch")
-            response_text = '''
+            response_text = """
             {
                 "plan_id": "plan_001",
                 "original_query": "What are the top 3 investment risks in the Indian EV market?",
@@ -52,10 +52,10 @@ class MockLLM:
                 "confidence_score": 0.85,
                 "reasoning": "The query requires web research, analysis, and report generation."
             }
-            '''
+            """
         elif "search" in str(last_message).lower():
             print("MOCK_LLM: Matched SEARCH branch")
-            response_text = '''
+            response_text = """
             {
                 "key_findings": [
                     {
@@ -90,9 +90,9 @@ class MockLLM:
                 "reasoning_chain": ["Identified main risks", "Cross-referenced sources"],
                 "limitations": []
             }
-            '''
+            """
         elif "report" in str(last_message).lower():
-            response_text = '''
+            response_text = """
             {
                 "title": "Investment Risks in the Indian EV Market",
                 "executive_summary": "The Indian EV market presents significant opportunities but also carries substantial investment risks that require careful consideration.",
@@ -117,7 +117,7 @@ class MockLLM:
                 ],
                 "appendices": []
             }
-            '''
+            """
         else:
             response_text = '{"status": "success"}'
 
@@ -137,7 +137,7 @@ def mock_config():
         "endpoint": "https://mock.openai.azure.com",
         "api_key": "mock-key",
         "deployment": "gpt-4o",
-        "api_version": "2024-02-01"
+        "api_version": "2024-02-01",
     }
 
 
@@ -180,7 +180,7 @@ class TestPlannerAgent:
                     task_type=TaskType.WEB_SEARCH,
                     description="Search for information",
                     priority=TaskPriority.HIGH,
-                    agent="Researcher"
+                    agent="Researcher",
                 )
             ]
 
@@ -194,7 +194,7 @@ class TestPlannerAgent:
                 execution_order=["task_001"],
                 required_tools=["web_search"],
                 confidence_score=0.8,
-                reasoning="Test plan"
+                reasoning="Test plan",
             )
 
             result = await agent.validate_plan(plan)
@@ -231,11 +231,14 @@ class TestResearcherAgent:
             assert len(results) == len(queries)
 
     @pytest.mark.asyncio
-    @pytest.mark.parametrize("queries,expected_len", [
-        ([], 0),
-        (["single query"], 1),
-        (["query1", "query2", "query3"], 3),
-    ])
+    @pytest.mark.parametrize(
+        "queries,expected_len",
+        [
+            ([], 0),
+            (["single query"], 1),
+            (["query1", "query2", "query3"], 3),
+        ],
+    )
     async def test_batch_search_edge_cases(self, mock_llm, mock_config, queries, expected_len):
         """Test batch search with varying inputs including empty and single queries."""
         with patch("src.utils.config.get_azure_openai_config", return_value=mock_config):
@@ -259,7 +262,7 @@ class TestAnalystAgent:
 
             research_data = {
                 "sources": [{"title": "Test", "snippet": "Test content", "source_name": "Test"}],
-                "search_results": []
+                "search_results": [],
             }
 
             result = await agent.analyze(TEST_QUERY, research_data)
@@ -290,7 +293,7 @@ class TestWriterAgent:
                 "patterns_detected": ["Pattern 1"],
                 "reasoning_chain": ["Step 1", "Step 2"],
                 "overall_confidence": 0.8,
-                "data_sources_analyzed": 5
+                "data_sources_analyzed": 5,
             }
 
             result = await agent.generate_report(TEST_QUERY, analysis_data)
@@ -298,7 +301,6 @@ class TestWriterAgent:
             assert result is not None
             assert result.metadata.query == TEST_QUERY
             assert len(result.sections) > 0
-
 
 
 # MCP Tools Tests
@@ -355,8 +357,12 @@ class TestSystemIntegration:
             "citations": []
         }
         """
-        with patch("src.utils.config.get_azure_openai_config", return_value=mock_config), \
-             patch("src.orchestration.research_workflow._responses_call", return_value=mock_response):
+        with (
+            patch("src.utils.config.get_azure_openai_config", return_value=mock_config),
+            patch(
+                "src.orchestration.research_workflow._responses_call", return_value=mock_response
+            ),
+        ):
             from src.orchestration.research_workflow import ResearchWorkflow
 
             workflow = ResearchWorkflow()

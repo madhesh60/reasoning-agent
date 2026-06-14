@@ -14,12 +14,15 @@ class TestDynamicStatus(unittest.IsolatedAsyncioTestCase):
         phrases = ["Phrase A", "Phrase B"]
 
         async with DynamicStatus(console_mock, "Initial", phrases, spinner_style="blue"):
-            await asyncio.sleep(4.5)  # enough to trigger at least one update loop (which has a 4s sleep)
+            await asyncio.sleep(
+                4.5
+            )  # enough to trigger at least one update loop (which has a 4s sleep)
 
         status_mock.update.assert_called()
         call_args = status_mock.update.call_args[0][0]
         self.assertIn("Phrase A", call_args)
         self.assertIn("blue", call_args)
+
 
 if __name__ == "__main__":
     unittest.main()

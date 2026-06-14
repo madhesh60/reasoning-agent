@@ -10,6 +10,7 @@ Run standalone:
 
 Or import create_agent_with_toolbox / call_agent_with_toolbox from elsewhere.
 """
+
 import asyncio
 import os
 from pathlib import Path
@@ -22,11 +23,11 @@ _project_root = Path(__file__).resolve().parents[2]
 load_dotenv(_project_root / ".env")
 
 # ── Configuration — all read from .env ──────────────────────────────────────
-ENDPOINT         = os.environ["AZURE_PROJECT_ENDPOINT"]        # .../projects/<name>
-TOOLBOX_NAME     = os.environ.get("AZURE_TOOLBOX_NAME", "reasoning-agent-web-search")
-TOOLBOX_VERSION  = os.environ.get("AZURE_TOOLBOX_VERSION", "1")
+ENDPOINT = os.environ["AZURE_PROJECT_ENDPOINT"]  # .../projects/<name>
+TOOLBOX_NAME = os.environ.get("AZURE_TOOLBOX_NAME", "reasoning-agent-web-search")
+TOOLBOX_VERSION = os.environ.get("AZURE_TOOLBOX_VERSION", "1")
 MODEL_DEPLOYMENT = os.environ.get("AZURE_OPENAI_DEPLOYMENT", "gpt-4o")
-API_KEY          = os.environ["AZURE_OPENAI_API_KEY"]
+API_KEY = os.environ["AZURE_OPENAI_API_KEY"]
 
 # Derive the OpenAI-compatible endpoint from the project endpoint
 # e.g. https://<resource>.services.ai.azure.com/api/projects/<name>
@@ -38,7 +39,7 @@ AZURE_OPENAI_ENDPOINT = os.environ.get(
     f"{_p.scheme}://{_p.netloc}/openai/v1",
 )
 if AZURE_OPENAI_ENDPOINT.endswith("/chat/completions"):
-    AZURE_OPENAI_ENDPOINT = AZURE_OPENAI_ENDPOINT[:-len("/chat/completions")]
+    AZURE_OPENAI_ENDPOINT = AZURE_OPENAI_ENDPOINT[: -len("/chat/completions")]
 
 # ── Agent singleton ──────────────────────────────────────────────────────────
 _agent = None
@@ -66,7 +67,7 @@ async def create_agent_with_toolbox():
     )
 
     # ── Build a web-search tool via the MCP toolbox endpoint ────────────────
-    mcp_url   = os.environ.get("MCP_SERVER_URL", "")
+    mcp_url = os.environ.get("MCP_SERVER_URL", "")
     mcp_token = os.environ.get("MCP_AUTH_TOKEN", API_KEY)
 
     async def _mcp_web_search(query: str) -> str:
@@ -75,8 +76,10 @@ async def create_agent_with_toolbox():
             return f"[web_search] MCP_SERVER_URL not set. Query was: {query}"
         headers = {"Authorization": f"Bearer {mcp_token}", "Content-Type": "application/json"}
         payload = {
-            "jsonrpc": "2.0", "id": 1, "method": "tools/call",
-            "params": {"name": "web_search", "arguments": {"search_query": query}}
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {"name": "web_search", "arguments": {"search_query": query}},
         }
         try:
             async with httpx.AsyncClient(timeout=30) as client:
@@ -85,9 +88,7 @@ async def create_agent_with_toolbox():
                 data = resp.json()
                 results = data.get("result", {}).get("content", [])
                 if isinstance(results, list):
-                    return "\n".join(
-                        r.get("text", str(r))[:500] for r in results[:5]
-                    )
+                    return "\n".join(r.get("text", str(r))[:500] for r in results[:5])
                 return str(results)[:1000]
         except Exception as e:
             return f"[web_search error] {e}. Query: {query}"
@@ -128,6 +129,7 @@ async def create_agent_with_toolbox():
                     messages.append(msg)
 
             from datetime import datetime
+
             today_str = datetime.now().strftime("%Y-%m-%d")
 
             system_prompt = (
@@ -184,11 +186,17 @@ async def create_agent_with_toolbox():
 
                     ai_msg = AIMessage(
                         content=content,
-                        tool_calls=[{
-                            "name": action,
-                            "args": {"query": action_input} if isinstance(action_input, str) else action_input,
-                            "id": call_id
-                        }]
+                        tool_calls=[
+                            {
+                                "name": action,
+                                "args": (
+                                    {"query": action_input}
+                                    if isinstance(action_input, str)
+                                    else action_input
+                                ),
+                                "id": call_id,
+                            }
+                        ],
                     )
                     run_messages.append(ai_msg)
 
@@ -196,9 +204,7 @@ async def create_agent_with_toolbox():
                     tool_result = await tool.coroutine(action_input)
 
                     tool_msg = ToolMessage(
-                        content=str(tool_result),
-                        tool_call_id=call_id,
-                        name=action
+                        content=str(tool_result), tool_call_id=call_id, name=action
                     )
                     run_messages.append(tool_msg)
                 else:
@@ -207,9 +213,7 @@ async def create_agent_with_toolbox():
                     run_messages.append(ai_msg)
 
                     tool_msg = ToolMessage(
-                        content=error_msg,
-                        tool_call_id=f"call_{uuid.uuid4().hex[:8]}",
-                        name=action
+                        content=error_msg, tool_call_id=f"call_{uuid.uuid4().hex[:8]}", name=action
                     )
                     run_messages.append(tool_msg)
 
@@ -217,7 +221,6 @@ async def create_agent_with_toolbox():
 
     _agent = CustomReActAgent(llm, tools)
     return _agent
-
 
 
 async def call_agent_with_toolbox(query: str) -> str:
@@ -250,6 +253,7 @@ async def call_agent_with_toolbox(query: str) -> str:
 # ── Standalone demo ──────────────────────────────────────────────────────────
 async def main():
     import sys
+
     print("=" * 64)
     print("Azure AI Foundry — MCP Toolbox Web-Search Demo")
     print("=" * 64)

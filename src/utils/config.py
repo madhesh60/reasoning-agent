@@ -27,6 +27,7 @@ logger = structlog.get_logger(__name__)
 @dataclass
 class AzureOpenAIConfig:
     """Azure OpenAI configuration."""
+
     endpoint: str
     api_key: str
     deployment: str
@@ -36,6 +37,7 @@ class AzureOpenAIConfig:
 @dataclass
 class AzureFoundryConfig:
     """Azure AI Foundry configuration."""
+
     endpoint: str
     project: str
     api_key: str
@@ -44,15 +46,15 @@ class AzureFoundryConfig:
 @dataclass
 class MCPConfig:
     """MCP server configuration."""
+
     server_url: str
     auth_token: str | None
-
-
 
 
 @dataclass
 class AgentConfig:
     """Agent configuration."""
+
     temperature: float
     max_tokens: int
     retry_attempts: int
@@ -61,6 +63,7 @@ class AgentConfig:
 @dataclass
 class WebSearchConfig:
     """Web search configuration."""
+
     max_results: int
     timeout: int
 
@@ -68,6 +71,7 @@ class WebSearchConfig:
 @dataclass
 class AppConfig:
     """Complete application configuration."""
+
     azure_openai: AzureOpenAIConfig
     azure_foundry: AzureFoundryConfig
     mcp: MCPConfig
@@ -105,7 +109,7 @@ def get_azure_openai_config() -> dict[str, Any]:
         "endpoint": os.getenv("AZURE_OPENAI_ENDPOINT", ""),
         "api_key": os.getenv("AZURE_OPENAI_API_KEY", ""),
         "deployment": os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o"),
-        "api_version": os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-01")
+        "api_version": os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-01"),
     }
 
 
@@ -119,7 +123,7 @@ def get_azure_foundry_config() -> dict[str, Any]:
     return {
         "endpoint": os.getenv("AZURE_FOUNDRY_ENDPOINT", ""),
         "project": os.getenv("AZURE_FOUNDRY_PROJECT", ""),
-        "api_key": os.getenv("AZURE_FOUNDRY_API_KEY", os.getenv("AZURE_OPENAI_API_KEY", ""))
+        "api_key": os.getenv("AZURE_FOUNDRY_API_KEY", os.getenv("AZURE_OPENAI_API_KEY", "")),
     }
 
 
@@ -132,7 +136,7 @@ def get_mcp_config() -> dict[str, Any]:
     """
     return {
         "server_url": os.getenv("MCP_SERVER_URL", "https://mcp.ai.azure.com"),
-        "auth_token": os.getenv("MCP_AUTH_TOKEN", os.getenv("AZURE_OPENAI_API_KEY", ""))
+        "auth_token": os.getenv("MCP_AUTH_TOKEN", os.getenv("AZURE_OPENAI_API_KEY", "")),
     }
 
 
@@ -146,7 +150,7 @@ def get_agent_config() -> dict[str, Any]:
     return {
         "temperature": float(os.getenv("AGENT_TEMPERATURE", "0.7")),
         "max_tokens": int(os.getenv("AGENT_MAX_TOKENS", "4000")),
-        "retry_attempts": int(os.getenv("AGENT_RETRY_ATTEMPTS", "3"))
+        "retry_attempts": int(os.getenv("AGENT_RETRY_ATTEMPTS", "3")),
     }
 
 
@@ -159,7 +163,7 @@ def get_web_search_config() -> dict[str, Any]:
     """
     return {
         "max_results": int(os.getenv("WEB_SEARCH_MAX_RESULTS", "10")),
-        "timeout": int(os.getenv("WEB_SEARCH_TIMEOUT", "15"))
+        "timeout": int(os.getenv("WEB_SEARCH_TIMEOUT", "15")),
     }
 
 
@@ -176,7 +180,7 @@ def get_app_config() -> AppConfig:
         mcp=MCPConfig(**get_mcp_config()),
         agent=AgentConfig(**get_agent_config()),
         web_search=WebSearchConfig(**get_web_search_config()),
-        log_level=os.getenv("LOG_LEVEL", "INFO")
+        log_level=os.getenv("LOG_LEVEL", "INFO"),
     )
 
 
@@ -238,7 +242,7 @@ def get_chat_model(temperature: float = 0.3, max_tokens: int = 3000) -> Any:
             base_url=base_url,
             model=deployment,
             temperature=temperature,
-            max_tokens=max_tokens
+            max_tokens=max_tokens,
         )
         return ChatOpenAI(
             base_url=base_url,
@@ -253,7 +257,7 @@ def get_chat_model(temperature: float = 0.3, max_tokens: int = 3000) -> Any:
             "instantiating_azure_chat_openai",
             endpoint=endpoint,
             deployment=deployment,
-            temperature=temperature
+            temperature=temperature,
         )
         return AzureChatOpenAI(
             azure_endpoint=endpoint,
@@ -272,7 +276,7 @@ def get_llm_config() -> dict[str, Any]:
         "azure_endpoint": config["endpoint"],
         "azure_deployment": config["deployment"],
         "api_key": config["api_key"],
-        "api_version": config["api_version"]
+        "api_version": config["api_version"],
     }
 
 
@@ -281,11 +285,8 @@ def get_search_config() -> dict[str, Any]:
     return {
         "mcp_server_url": os.getenv("MCP_SERVER_URL", "https://mcp.ai.azure.com"),
         "api_key": os.getenv("MCP_AUTH_TOKEN", os.getenv("AZURE_OPENAI_API_KEY", "")),
-        "timeout": int(os.getenv("WEB_SEARCH_TIMEOUT", "15"))
+        "timeout": int(os.getenv("WEB_SEARCH_TIMEOUT", "15")),
     }
-
-
-
 
 
 def clean_and_parse_json(text: str) -> Any:
@@ -306,22 +307,22 @@ def clean_and_parse_json(text: str) -> Any:
     # ── 1. Strip <think>...</think> blocks (handles closed and unclosed) ────────
     # Reasoning models output potentially very long <think> blocks.
     # Case A: block is properly closed with </think>
-    text_clean = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
+    text_clean = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
     # Case B: block is never closed (model ran out of space thinking)
     # In this case, strip from <think> to the end, then try from the start.
-    if '<think>' in text_clean:
-        think_start = text_clean.find('<think>')
+    if "<think>" in text_clean:
+        think_start = text_clean.find("<think>")
         text_clean = text_clean[:think_start]
     text_clean = text_clean.strip()
 
     # ── 2. Strip markdown code fences ─────────────────────────────────────────
-    text_clean = re.sub(r'^```(?:json)?\s*', '', text_clean, flags=re.MULTILINE)
-    text_clean = re.sub(r'\s*```$', '', text_clean, flags=re.MULTILINE)
+    text_clean = re.sub(r"^```(?:json)?\s*", "", text_clean, flags=re.MULTILINE)
+    text_clean = re.sub(r"\s*```$", "", text_clean, flags=re.MULTILINE)
     text_clean = text_clean.strip()
 
     # ── 3. Extract the outermost JSON object or array ─────────────────────────
-    first_brace   = text_clean.find('{')
-    first_bracket = text_clean.find('[')
+    first_brace = text_clean.find("{")
+    first_bracket = text_clean.find("[")
 
     start_idx = -1
     is_object = False
@@ -334,10 +335,10 @@ def clean_and_parse_json(text: str) -> Any:
         is_object = False
 
     if start_idx != -1:
-        end_char = '}' if is_object else ']'
-        end_idx  = text_clean.rfind(end_char)
+        end_char = "}" if is_object else "]"
+        end_idx = text_clean.rfind(end_char)
         if end_idx >= start_idx:
-            text_clean = text_clean[start_idx:end_idx + 1]
+            text_clean = text_clean[start_idx : end_idx + 1]
 
     # ── 4. Fix invalid escape sequences (\x where x is not a valid JSON escape)
     # Valid JSON escapes: \" \\ \/ \b \f \n \r \t \uXXXX
@@ -345,17 +346,17 @@ def clean_and_parse_json(text: str) -> Any:
         result = []
         i = 0
         while i < len(s):
-            if s[i] == '\\' and i + 1 < len(s):
+            if s[i] == "\\" and i + 1 < len(s):
                 next_ch = s[i + 1]
-                if next_ch in ('"', '\\', '/', 'b', 'f', 'n', 'r', 't', 'u'):
-                    result.append(s[i])          # keep valid escape
+                if next_ch in ('"', "\\", "/", "b", "f", "n", "r", "t", "u"):
+                    result.append(s[i])  # keep valid escape
                 else:
-                    result.append('\\\\')        # double it so it becomes a literal backslash
+                    result.append("\\\\")  # double it so it becomes a literal backslash
                 i += 1
             else:
                 result.append(s[i])
             i += 1
-        return ''.join(result)
+        return "".join(result)
 
     text_clean = _fix_escapes(text_clean)
 
@@ -374,14 +375,14 @@ def clean_and_parse_json(text: str) -> Any:
         stack = []
         in_string = False
         escape_next = False
-        OPEN  = {'{': '}', '[': ']'}
-        CLOSE = {'}', ']'}
+        OPEN = {"{": "}", "[": "]"}
+        CLOSE = {"}", "]"}
 
         for ch in s:
             if escape_next:
                 escape_next = False
                 continue
-            if ch == '\\' and in_string:
+            if ch == "\\" and in_string:
                 escape_next = True
                 continue
             if ch == '"':
@@ -400,7 +401,7 @@ def clean_and_parse_json(text: str) -> Any:
             s += '"'
 
         # Close remaining open structures in reverse order
-        s += ''.join(reversed(stack))
+        s += "".join(reversed(stack))
         return s
 
     repaired = _repair_truncated(text_clean)
@@ -410,7 +411,7 @@ def clean_and_parse_json(text: str) -> Any:
         pass
 
     # ── 7. Third attempt: strip trailing commas (common model mistake) ─────────
-    no_trailing = re.sub(r',\s*([}\]])', r'\1', repaired)
+    no_trailing = re.sub(r",\s*([}\]])", r"\1", repaired)
     try:
         return json.loads(no_trailing)
     except json.JSONDecodeError:
@@ -421,6 +422,7 @@ def clean_and_parse_json(text: str) -> Any:
     # strings, unquoted keys, partial outputs, etc.
     try:
         import json_repair  # pip install json-repair
+
         # Feed it the raw extracted JSON region (not the repaired one which may
         # have introduced extra closings that confuse json-repair's own parser)
         candidate = text_clean  # use pre-repair version
@@ -429,7 +431,9 @@ def clean_and_parse_json(text: str) -> Any:
             logger.info("json_repair_succeeded", char_len=len(candidate))
             return result
     except ImportError:
-        logger.warning("json_repair_not_installed", msg="pip install json-repair to improve JSON robustness")
+        logger.warning(
+            "json_repair_not_installed", msg="pip install json-repair to improve JSON robustness"
+        )
     except Exception as repair_err:
         logger.warning("json_repair_failed", error=str(repair_err))
 
@@ -454,19 +458,28 @@ if __name__ == "__main__":
 
     openai_config = get_azure_openai_config()
     print("\nAzure OpenAI:")
-    print(f"  Endpoint: {openai_config['endpoint'][:50]}..." if openai_config['endpoint'] else "  Endpoint: Not set")
+    print(
+        f"  Endpoint: {openai_config['endpoint'][:50]}..."
+        if openai_config["endpoint"]
+        else "  Endpoint: Not set"
+    )
     print(f"  Deployment: {openai_config['deployment']}")
-    print(f"  API Key: {'***' + openai_config['api_key'][-4:] if openai_config['api_key'] else 'Not set'}")
+    print(
+        f"  API Key: {'***' + openai_config['api_key'][-4:] if openai_config['api_key'] else 'Not set'}"
+    )
 
     foundry_config = get_azure_foundry_config()
     print("\nAzure Foundry:")
     print(f"  Project: {foundry_config['project'] or 'Not set'}")
-    print(f"  Endpoint: {foundry_config['endpoint'][:50]}..." if foundry_config['endpoint'] else "  Endpoint: Not set")
+    print(
+        f"  Endpoint: {foundry_config['endpoint'][:50]}..."
+        if foundry_config["endpoint"]
+        else "  Endpoint: Not set"
+    )
 
     mcp_config = get_mcp_config()
     print("\nMCP Server:")
     print(f"  URL: {mcp_config['server_url']}")
-
 
     agent_config = get_agent_config()
     print("\nAgent Settings:")

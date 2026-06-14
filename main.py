@@ -36,6 +36,7 @@ sys.path.insert(0, str(ROOT))
 
 if sys.platform == "win32" and "pytest" not in sys.modules:
     import io
+
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
 
@@ -83,7 +84,7 @@ Uses OpenAI models on Azure AI Foundry with:
             "name": "Competitive Intelligence",
             "description": "Direct integrations with specialized Azure AI Foundry agents.",
         },
-    ]
+    ],
 )
 
 app.add_middleware(
@@ -93,6 +94,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 # ── Custom Middlewares ────────────────────────────────────────────────────────
 @app.middleware("http")
@@ -122,7 +124,7 @@ async def add_security_headers_and_logging(request: Request, call_next):
         method=request.method,
         status_code=response.status_code,
         elapsed_seconds=elapsed,
-        request_id=request_id
+        request_id=request_id,
     )
     return response
 
@@ -132,19 +134,17 @@ class AskRequest(BaseModel):
     query: str = Field(
         ...,
         description="The research query to run",
-        examples=["What are the top 3 investment risks in the Indian EV market?"]
+        examples=["What are the top 3 investment risks in the Indian EV market?"],
     )
     max_retries: int = Field(
         2,
         ge=1,
         le=5,
         description="Maximum number of retries for failed agents (1 to 5)",
-        examples=[2]
+        examples=[2],
     )
     enable_web_search: bool = Field(
-        True,
-        description="Enable real-time web search via MCP",
-        examples=[True]
+        True, description="Enable real-time web search via MCP", examples=[True]
     )
 
 
@@ -152,25 +152,19 @@ class CompetitiveRequest(BaseModel):
     query: str = Field(
         ...,
         description="Competitive analysis prompt",
-        examples=["Compare market share and battery technology of competitors"]
+        examples=["Compare market share and battery technology of competitors"],
     )
-    company: str = Field(
-        "",
-        description="Target company name (optional)",
-        examples=["Tata Motors"]
-    )
+    company: str = Field("", description="Target company name (optional)", examples=["Tata Motors"])
 
 
 class ResearchRequest(BaseModel):
     query: str = Field(
         ...,
         description="Comprehensive research topic",
-        examples=["Solid-state battery commercialization timeline"]
+        examples=["Solid-state battery commercialization timeline"],
     )
     include_competitive: bool = Field(
-        True,
-        description="Include competitive intelligence from Azure Agent",
-        examples=[True]
+        True, description="Include competitive intelligence from Azure Agent", examples=[True]
     )
 
 
@@ -178,10 +172,16 @@ class AgentResponse(BaseModel):
     status: str = Field(..., description="Execution status")
     query: str = Field(..., description="The original query")
     report: dict = Field(..., description="The structured report results")
-    reasoning_steps: list[str] = Field(default_factory=list, description="List of reasoning steps taken")
+    reasoning_steps: list[str] = Field(
+        default_factory=list, description="List of reasoning steps taken"
+    )
     confidence: float = Field(default=0.0, description="Overall confidence level (0-1)")
-    execution_time_seconds: float = Field(default=0.0, description="Total execution time in seconds")
-    agents_used: list[str] = Field(default_factory=list, description="List of agents involved in the query")
+    execution_time_seconds: float = Field(
+        default=0.0, description="Total execution time in seconds"
+    )
+    agents_used: list[str] = Field(
+        default_factory=list, description="List of agents involved in the query"
+    )
     timestamp: str = Field(default="", description="ISO timestamp of completion")
 
 
@@ -190,7 +190,7 @@ class AgentResponse(BaseModel):
     "/health",
     tags=["System"],
     summary="Get Liveness Health Status",
-    response_description="Returns 200 and liveness indicators if the server is up."
+    response_description="Returns 200 and liveness indicators if the server is up.",
 )
 async def health():
     """Liveness probe — returns 200 if the API is running."""
@@ -206,21 +206,17 @@ async def health():
     "/readiness",
     tags=["System"],
     summary="Get Readiness Probe Status",
-    response_description="Returns 200 if key environment variables are set, otherwise 503."
+    response_description="Returns 200 if key environment variables are set, otherwise 503.",
 )
 async def readiness():
     """Readiness probe — checks if required environment variables are set."""
-    required_vars = [
-        "AZURE_OPENAI_ENDPOINT",
-        "AZURE_OPENAI_API_KEY",
-        "AZURE_OPENAI_DEPLOYMENT"
-    ]
+    required_vars = ["AZURE_OPENAI_ENDPOINT", "AZURE_OPENAI_API_KEY", "AZURE_OPENAI_DEPLOYMENT"]
     missing = [var for var in required_vars if not os.environ.get(var)]
 
     if missing:
         raise HTTPException(
             status_code=503,
-            detail=f"Service not ready. Missing environment variables: {', '.join(missing)}"
+            detail=f"Service not ready. Missing environment variables: {', '.join(missing)}",
         )
     return {
         "status": "ready",
@@ -234,7 +230,7 @@ async def readiness():
     response_model=AgentResponse,
     tags=["Research Pipeline"],
     summary="Execute Multi-Agent Research",
-    response_description="Returns the structured research report and metadata."
+    response_description="Returns the structured research report and metadata.",
 )
 async def ask(request: AskRequest):
     """
@@ -250,13 +246,13 @@ async def ask(request: AskRequest):
 
     try:
         from src.utils.config import load_environment
+
         load_environment()
 
         from src.orchestration.research_workflow import ResearchWorkflow
+
         workflow = ResearchWorkflow(
-            enable_a2a=True,
-            enable_mcp=request.enable_web_search,
-            max_retries=request.max_retries
+            enable_a2a=True, enable_mcp=request.enable_web_search, max_retries=request.max_retries
         )
 
         result = await workflow.execute(request.query)
@@ -270,8 +266,7 @@ async def ask(request: AskRequest):
                 "title": report_obj.metadata.title if report_obj.metadata else request.query,
                 "executive_summary": report_obj.executive_summary,
                 "sections": [
-                    {"title": s.title, "content": s.content[:500]}
-                    for s in report_obj.sections[:5]
+                    {"title": s.title, "content": s.content[:500]} for s in report_obj.sections[:5]
                 ],
                 "conclusions": report_obj.conclusions[:5],
                 "recommendations": report_obj.recommendations[:3],
@@ -308,7 +303,7 @@ async def ask(request: AskRequest):
     "/competitive",
     tags=["Competitive Intelligence"],
     summary="Fetch Competitive Intelligence",
-    response_description="Returns competitive analysis or falls back to local analyst."
+    response_description="Returns competitive analysis or falls back to local analyst.",
 )
 async def competitive_analysis(request: CompetitiveRequest):
     """
@@ -327,7 +322,7 @@ async def competitive_analysis(request: CompetitiveRequest):
     if not agent_id or not project_endpoint:
         raise HTTPException(
             status_code=503,
-            detail="AZURE_EXISTING_AGENT_ID or AZURE_PROJECT_ENDPOINT not configured in .env"
+            detail="AZURE_EXISTING_AGENT_ID or AZURE_PROJECT_ENDPOINT not configured in .env",
         )
 
     try:
@@ -387,25 +382,27 @@ async def competitive_analysis(request: CompetitiveRequest):
         logger.info("api_competitive_fallback", using="local_analyst")
         try:
             from src.utils.config import load_environment
+
             load_environment()
             from src.agents.analyst import AnalystAgent
+
             analyst = AnalystAgent()
-            result = await analyst.analyze(
-                request.query,
-                {"sources": [], "search_results": []}
-            )
+            result = await analyst.analyze(request.query, {"sources": [], "search_results": []})
             elapsed = (datetime.utcnow() - t0).total_seconds()
             return {
                 "status": "completed_via_fallback",
                 "query": request.query,
                 "agent_id": "local_analyst",
-                "answer": "; ".join([f.statement for f in result.key_findings[:3]]) or "Analysis completed.",
+                "answer": "; ".join([f.statement for f in result.key_findings[:3]])
+                or "Analysis completed.",
                 "confidence": result.overall_confidence,
                 "execution_time_seconds": elapsed,
                 "timestamp": datetime.utcnow().isoformat(),
             }
         except Exception as e2:
-            raise HTTPException(status_code=500, detail=f"Both competitive agent and fallback failed: {str(e2)}") from e2
+            raise HTTPException(
+                status_code=500, detail=f"Both competitive agent and fallback failed: {str(e2)}"
+            ) from e2
 
 
 # ── Combined Research: POST /research ────────────────────────────────────────
@@ -413,7 +410,7 @@ async def competitive_analysis(request: CompetitiveRequest):
     "/research",
     tags=["Research Pipeline"],
     summary="Combined Research & Competitive Intelligence",
-    response_description="Returns deep research combined with competitive insights."
+    response_description="Returns deep research combined with competitive insights.",
 )
 async def combined_research(request: ResearchRequest):
     """
@@ -429,9 +426,7 @@ async def combined_research(request: ResearchRequest):
     pipeline_task = asyncio.create_task(_run_pipeline(request.query))
 
     if request.include_competitive:
-        competitive_task = asyncio.create_task(
-            _run_competitive(request.query)
-        )
+        competitive_task = asyncio.create_task(_run_competitive(request.query))
         pipeline_result, competitive_result = await asyncio.gather(
             pipeline_task, competitive_task, return_exceptions=True
         )
@@ -442,7 +437,9 @@ async def combined_research(request: ResearchRequest):
     elapsed = (datetime.utcnow() - t0).total_seconds()
 
     # Merge results
-    report = pipeline_result if isinstance(pipeline_result, dict) else {"error": str(pipeline_result)}
+    report = (
+        pipeline_result if isinstance(pipeline_result, dict) else {"error": str(pipeline_result)}
+    )
     competitive = competitive_result if isinstance(competitive_result, dict) else {}
 
     return {
@@ -452,7 +449,13 @@ async def combined_research(request: ResearchRequest):
         "research_report": report,
         "competitive_intelligence": competitive,
         "timestamp": datetime.utcnow().isoformat(),
-        "agents_used": ["Planner", "Researcher", "Analyst", "Writer", "CompetitiveLandscapeResearcher"],
+        "agents_used": [
+            "Planner",
+            "Researcher",
+            "Analyst",
+            "Writer",
+            "CompetitiveLandscapeResearcher",
+        ],
     }
 
 
@@ -460,8 +463,10 @@ async def _run_pipeline(query: str) -> dict:
     """Helper: run the 4-agent pipeline and return a dict."""
     try:
         from src.utils.config import load_environment
+
         load_environment()
         from src.orchestration.research_workflow import ResearchWorkflow
+
         workflow = ResearchWorkflow(enable_a2a=True, enable_mcp=True, max_retries=2)
         result = await workflow.execute(query)
         report_obj = result.get("report")
@@ -484,14 +489,20 @@ async def _run_competitive(query: str) -> dict:
     project_endpoint = os.environ.get("AZURE_PROJECT_ENDPOINT", "")
     api_key = os.environ.get("AZURE_OPENAI_API_KEY", "")
     if not agent_id or not project_endpoint:
-        return {"status": "skipped", "reason": "AZURE_EXISTING_AGENT_ID or AZURE_PROJECT_ENDPOINT not set"}
+        return {
+            "status": "skipped",
+            "reason": "AZURE_EXISTING_AGENT_ID or AZURE_PROJECT_ENDPOINT not set",
+        }
     try:
         from azure.ai.projects import AIProjectClient
         from azure.core.credentials import AzureKeyCredential
+
         client = AIProjectClient(endpoint=project_endpoint, credential=AzureKeyCredential(api_key))
         agent_name = agent_id.split(":")[0] if ":" in agent_id else agent_id
         thread = client.agents.create_thread()
-        client.agents.create_message(thread_id=thread.id, role="user", content=f"Competitive analysis: {query}")
+        client.agents.create_message(
+            thread_id=thread.id, role="user", content=f"Competitive analysis: {query}"
+        )
         client.agents.create_and_process_run(thread_id=thread.id, agent_id=agent_name)
         messages = client.agents.list_messages(thread_id=thread.id)
         answer = ""
@@ -511,5 +522,6 @@ async def _run_competitive(query: str) -> dict:
 # ── Entry point ───────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     import uvicorn
+
     port = int(os.environ.get("A2A_PORT", 8000))
     uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)

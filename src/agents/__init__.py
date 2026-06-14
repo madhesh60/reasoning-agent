@@ -15,11 +15,13 @@ class TaskType(str, Enum):
     REPORT_GENERATION = "report_generation"
     FACT_CHECK = "fact_check"
 
+
 class TaskPriority(str, Enum):
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
     CRITICAL = "critical"
+
 
 class SubTask(BaseModel):
     # Original / Legacy fields
@@ -89,6 +91,7 @@ class SubTask(BaseModel):
             self.task_type = self.type
         return self
 
+
 class ResearchPlan(BaseModel):
     # Original fields
     plan_id: str = Field(default="", description="ID of the plan")
@@ -103,7 +106,9 @@ class ResearchPlan(BaseModel):
     original_query: str = Field(default="", description="Original user query")
     intent_summary: str = Field(default="", description="Intent summary")
     total_tasks: int = Field(default=0, description="Total number of tasks")
-    estimated_total_time_seconds: int = Field(default=0, description="Estimated total time in seconds")
+    estimated_total_time_seconds: int = Field(
+        default=0, description="Estimated total time in seconds"
+    )
     execution_order: list[str] = Field(default_factory=list, description="Order of execution")
     required_tools: list[str] = Field(default_factory=list, description="Required tools")
 
@@ -125,9 +130,11 @@ class ResearchPlan(BaseModel):
             self.original_query = self.query
         return self
 
+
 # --- Researcher Models ---
 class SearchResult(BaseModel):
     """Represents a single search result from web research."""
+
     title: str = Field(default="", description="Title of the search result")
     url: str = Field(default="", description="URL of the source")
     snippet: str = Field(default="", description="Brief excerpt from the source")
@@ -137,15 +144,25 @@ class SearchResult(BaseModel):
     authority_score: float = Field(default=0.0, description="Source authority (0-1)")
     raw_data: dict[str, Any] = Field(default_factory=dict, description="Raw data from search API")
 
+
 class ResearchResults(BaseModel):
     """Complete research results from a search session."""
+
     query: str = Field(default="", description="The search query")
     timestamp: str = Field(default="", description="When the research was conducted")
     total_sources: int = Field(default=0, description="Total number of sources found")
-    high_confidence_sources: list[SearchResult] = Field(default_factory=list, description="High relevance sources")
-    medium_confidence_sources: list[SearchResult] = Field(default_factory=list, description="Medium relevance sources")
-    sources_used: list[str] = Field(default_factory=list, description="URLs of all sources consulted")
-    search_metadata: dict[str, Any] = Field(default_factory=dict, description="Search execution metadata")
+    high_confidence_sources: list[SearchResult] = Field(
+        default_factory=list, description="High relevance sources"
+    )
+    medium_confidence_sources: list[SearchResult] = Field(
+        default_factory=list, description="Medium relevance sources"
+    )
+    sources_used: list[str] = Field(
+        default_factory=list, description="URLs of all sources consulted"
+    )
+    search_metadata: dict[str, Any] = Field(
+        default_factory=dict, description="Search execution metadata"
+    )
     confidence_score: float = Field(default=1.0, description="Overall confidence in results (0-1)")
     gaps_identified: list[str] = Field(default_factory=list, description="Information gaps found")
 
@@ -159,24 +176,30 @@ class ResearchResults(BaseModel):
             return [v]
         return v
 
+
 # --- Analyst Models ---
 class EvidenceStrength(str, Enum):
     STRONG = "strong"
     MEDIUM = "medium"
     WEAK = "weak"
 
+
 class AnalysisInsight(BaseModel):
     category: str = Field(default="", description="Insight category")
     statement: str = Field(default="", description="Insight statement")
     confidence: float = Field(default=0.0, description="Confidence score")
     evidence: Any = Field(default="", description="Supporting evidence")
-    evidence_strength: EvidenceStrength = Field(default=EvidenceStrength.MEDIUM, description="Strength of evidence")
+    evidence_strength: EvidenceStrength = Field(
+        default=EvidenceStrength.MEDIUM, description="Strength of evidence"
+    )
     source_count: int = Field(default=0, description="Number of sources")
+
 
 class RiskLevel(str, Enum):
     HIGH = "high"
     MEDIUM = "medium"
     LOW = "low"
+
 
 class RiskAssessment(BaseModel):
     risk_id: str = Field(default="", description="Unique risk ID")
@@ -187,20 +210,29 @@ class RiskAssessment(BaseModel):
     impact: float = Field(default=0.0, description="Impact (0-1)")
     risk_score: float = Field(default=0.0, description="Overall risk score")
     factors: list[str] = Field(default_factory=list, description="Risk factors")
-    mitigation: list[str] = Field(default_factory=list, description="Proposed mitigation strategies")
+    mitigation: list[str] = Field(
+        default_factory=list, description="Proposed mitigation strategies"
+    )
     evidence: list[str] = Field(default_factory=list, description="Supporting evidence")
     confidence: float = Field(default=0.0, description="Mitigation confidence")
     data_quality_issues: list[str] = Field(default_factory=list, description="Data quality issues")
 
+
 class AnalysisResults(BaseModel):
     query: str = Field(default="", description="The research query")
     key_findings: list[AnalysisInsight] = Field(default_factory=list, description="Key insights")
-    risks_identified: list[RiskAssessment] = Field(default_factory=list, description="Risks identified")
-    risks: list[RiskAssessment] = Field(default_factory=list, description="Risks list (duplicate for compatibility)")
+    risks_identified: list[RiskAssessment] = Field(
+        default_factory=list, description="Risks identified"
+    )
+    risks: list[RiskAssessment] = Field(
+        default_factory=list, description="Risks list (duplicate for compatibility)"
+    )
     patterns_detected: list[str] = Field(default_factory=list, description="Patterns detected")
     reasoning_chain: list[str] = Field(default_factory=list, description="Reasoning steps")
     overall_confidence: float = Field(default=1.0, description="Overall confidence")
-    data_sources_analyzed: list[str] = Field(default_factory=list, description="Data sources analyzed")
+    data_sources_analyzed: list[str] = Field(
+        default_factory=list, description="Data sources analyzed"
+    )
 
     @model_validator(mode="before")
     @classmethod
@@ -232,27 +264,42 @@ class AnalysisResults(BaseModel):
             return [v]
         return v
 
+
 # --- Competitive Analysis Models ---
 class CompetitorInsight(BaseModel):
     """A single competitive insight from the landscape analysis."""
+
     competitor_name: str = Field(default="", description="Name of the competitor or market player")
     insight: str = Field(default="", description="Key competitive insight")
-    category: str = Field(default="general", description="Category: market_share, technology, pricing, strategy")
+    category: str = Field(
+        default="general", description="Category: market_share, technology, pricing, strategy"
+    )
     confidence: float = Field(default=0.5, description="Confidence in this insight (0-1)")
     source: str = Field(default="", description="Source of the insight")
 
+
 class CompetitiveAnalysisResult(BaseModel):
     """Complete competitive landscape analysis result."""
+
     query: str = Field(default="", description="Original analysis query")
     analysis_id: str = Field(default="", description="Unique analysis identifier")
     timestamp: str = Field(default="", description="When the analysis was performed")
     market_overview: str = Field(default="", description="High-level market overview")
-    key_competitors: list[CompetitorInsight] = Field(default_factory=list, description="Key competitor insights")
+    key_competitors: list[CompetitorInsight] = Field(
+        default_factory=list, description="Key competitor insights"
+    )
     market_trends: list[str] = Field(default_factory=list, description="Identified market trends")
-    strategic_recommendations: list[str] = Field(default_factory=list, description="Strategic recommendations")
+    strategic_recommendations: list[str] = Field(
+        default_factory=list, description="Strategic recommendations"
+    )
     swot_analysis: dict[str, list[str]] = Field(
-        default_factory=lambda: {"strengths": [], "weaknesses": [], "opportunities": [], "threats": []},
-        description="SWOT analysis"
+        default_factory=lambda: {
+            "strengths": [],
+            "weaknesses": [],
+            "opportunities": [],
+            "threats": [],
+        },
+        description="SWOT analysis",
     )
     confidence_score: float = Field(default=0.5, description="Overall confidence (0-1)")
     raw_response: str = Field(default="", description="Raw response from the agent")
@@ -267,11 +314,13 @@ class CompetitiveAnalysisResult(BaseModel):
             return [v]
         return v
 
+
 # --- Writer Models ---
 class ReportFormat(str, Enum):
     MARKDOWN = "markdown"
     JSON = "json"
     HTML = "html"
+
 
 class ReportMetadata(BaseModel):
     title: str = Field(default="", description="Title of the report")
@@ -281,9 +330,11 @@ class ReportMetadata(BaseModel):
     generated_at: str = Field(default="", description="Generation timestamp")
     query: str = Field(default="", description="Original research query")
 
+
 class ReportSection(BaseModel):
     title: str = Field(default="", description="Section title")
     content: str = Field(default="", description="Section content in markdown format")
+
 
 class GeneratedReport(BaseModel):
     metadata: ReportMetadata = Field(default_factory=ReportMetadata, description="Report metadata")
@@ -291,7 +342,9 @@ class GeneratedReport(BaseModel):
     sections: list[ReportSection] = Field(default_factory=list, description="Main sections")
     conclusions: list[str] = Field(default_factory=list, description="List of conclusions")
     recommendations: list[str] = Field(default_factory=list, description="List of recommendations")
-    citations: list[dict[str, Any]] = Field(default_factory=list, description="List of references / citations")
+    citations: list[dict[str, Any]] = Field(
+        default_factory=list, description="List of references / citations"
+    )
 
     @field_validator("conclusions", "recommendations", mode="before")
     @classmethod
@@ -303,6 +356,7 @@ class GeneratedReport(BaseModel):
             return [v]
         return v
 
+
 # --- Base Agent Class ---
 class BaseAgent:
     def __init__(self, llm: Any = None, **kwargs):
@@ -310,18 +364,22 @@ class BaseAgent:
         if self.llm is None:
             try:
                 from ..utils.config import get_chat_model
+
                 self.llm = get_chat_model()
             except Exception:
                 pass
+
 
 # --- Agent Classes ---
 class PlannerAgent(BaseAgent):
     async def decompose_task(self, query: str) -> ResearchPlan:
         if self.llm:
             from langchain_core.messages import HumanMessage
+
             prompt = f"Decompose the task: {query}"
             response = await self.llm.ainvoke([HumanMessage(content=prompt)])
             import json_repair
+
             try:
                 data = json_repair.loads(response.content)
                 data["original_query"] = query
@@ -333,27 +391,37 @@ class PlannerAgent(BaseAgent):
     async def validate_plan(self, plan: ResearchPlan) -> dict:
         return {"can_proceed": True, "is_valid": True}
 
+
 class ResearcherAgent(BaseAgent):
     async def search(self, query: str, max_results: int = 10) -> ResearchResults:
         if self.llm:
             from langchain_core.messages import HumanMessage
+
             try:
                 await self.llm.ainvoke([HumanMessage(content=f"search: {query}")])
             except Exception:
                 pass
         return ResearchResults(query=query, total_sources=5)
 
-    async def batch_search(self, queries: list[str], max_results_per_query: int = 3) -> list[ResearchResults]:
+    async def batch_search(
+        self, queries: list[str], max_results_per_query: int = 3
+    ) -> list[ResearchResults]:
         import asyncio
-        return await asyncio.gather(*(self.search(q, max_results=max_results_per_query) for q in queries))
+
+        return await asyncio.gather(
+            *(self.search(q, max_results=max_results_per_query) for q in queries)
+        )
+
 
 class AnalystAgent(BaseAgent):
     async def analyze(self, query: str, research_data: dict) -> AnalysisResults:
         if self.llm:
             from langchain_core.messages import HumanMessage
+
             prompt = f"search and analyze: {query}"
             response = await self.llm.ainvoke([HumanMessage(content=prompt)])
             import json_repair
+
             try:
                 data = json_repair.loads(response.content)
                 data["query"] = query
@@ -362,13 +430,16 @@ class AnalystAgent(BaseAgent):
                 pass
         return AnalysisResults(query=query)
 
+
 class WriterAgent(BaseAgent):
     async def generate_report(self, query: str, analysis_results: dict) -> GeneratedReport:
         if self.llm:
             from langchain_core.messages import HumanMessage
+
             prompt = f"report for: {query}"
             response = await self.llm.ainvoke([HumanMessage(content=prompt)])
             import json_repair
+
             try:
                 data = json_repair.loads(response.content)
                 if "metadata" not in data:
@@ -379,9 +450,13 @@ class WriterAgent(BaseAgent):
                 pass
         return GeneratedReport(metadata=ReportMetadata(query=query))
 
+
 class CompetitiveLandscapeAgent(BaseAgent):
-    async def analyze_competitive_landscape(self, query: str, industry: str = "", region: str = "") -> CompetitiveAnalysisResult:
+    async def analyze_competitive_landscape(
+        self, query: str, industry: str = "", region: str = ""
+    ) -> CompetitiveAnalysisResult:
         return CompetitiveAnalysisResult(query=query, analysis_id="dummy", timestamp="")
+
 
 __all__ = [
     "PlannerAgent",

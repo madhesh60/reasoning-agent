@@ -62,16 +62,13 @@ __all__ = [
     "__version__",
     "__author__",
     "__license__",
-
     # Core workflow
     "ResearchWorkflow",
-
     # Agents
     "PlannerAgent",
     "ResearcherAgent",
     "AnalystAgent",
     "WriterAgent",
-
     # Agent data types
     "ResearchPlan",
     "SubTask",
@@ -84,13 +81,9 @@ __all__ = [
     "GeneratedReport",
     "ReportFormat",
     "ReportSection",
-
-
-
     # MCP tools
     "MCPWebSearchTool",
     "MCPDocumentSearchTool",
-
     # Configuration
     "load_environment",
     "get_azure_openai_config",

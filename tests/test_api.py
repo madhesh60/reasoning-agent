@@ -24,7 +24,7 @@ async def test_readiness_endpoint():
     env_vars = {
         "AZURE_OPENAI_ENDPOINT": "https://test.openai.azure.com",
         "AZURE_OPENAI_API_KEY": "test-key",
-        "AZURE_OPENAI_DEPLOYMENT": "test-deployment"
+        "AZURE_OPENAI_DEPLOYMENT": "test-deployment",
     }
 
     # 1. Missing case
@@ -49,21 +49,16 @@ async def test_ask_endpoint():
         "query": "test query",
         "report": None,
         "confidence_score": 0.9,
-        "metadata": {
-            "completed_tasks": ["planner", "researcher"],
-            "failed_tasks": []
-        }
+        "metadata": {"completed_tasks": ["planner", "researcher"], "failed_tasks": []},
     }
 
-    with patch("src.orchestration.research_workflow.ResearchWorkflow.execute", new_callable=AsyncMock) as mock_execute:
+    with patch(
+        "src.orchestration.research_workflow.ResearchWorkflow.execute", new_callable=AsyncMock
+    ) as mock_execute:
         mock_execute.return_value = mock_workflow_result
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-            payload = {
-                "query": "test query",
-                "max_retries": 2,
-                "enable_web_search": True
-            }
+            payload = {"query": "test query", "max_retries": 2, "enable_web_search": True}
             response = await ac.post("/ask", json=payload)
             assert response.status_code == 200
             data = response.json()
@@ -77,11 +72,7 @@ async def test_ask_endpoint():
 @pytest.mark.asyncio
 async def test_ask_endpoint_validation():
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-        payload = {
-            "query": "test query",
-            "max_retries": 0,
-            "enable_web_search": True
-        }
+        payload = {"query": "test query", "max_retries": 0, "enable_web_search": True}
         response = await ac.post("/ask", json=payload)
         assert response.status_code == 422
 
@@ -92,12 +83,11 @@ async def test_ask_endpoint_validation():
 
 @pytest.mark.asyncio
 async def test_competitive_endpoint_503_when_unset():
-    with patch.dict(os.environ, {"AZURE_EXISTING_AGENT_ID": "", "AZURE_PROJECT_ENDPOINT": ""}, clear=False):
+    with patch.dict(
+        os.environ, {"AZURE_EXISTING_AGENT_ID": "", "AZURE_PROJECT_ENDPOINT": ""}, clear=False
+    ):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-            payload = {
-                "query": "test query",
-                "company": "test company"
-            }
+            payload = {"query": "test query", "company": "test company"}
             response = await ac.post("/competitive", json=payload)
             assert response.status_code == 503
             assert "not configured in .env" in response.json()["detail"]

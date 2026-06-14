@@ -31,7 +31,7 @@ def configure_logging(log_level: str = "INFO", json_format: bool = True) -> None
                 structlog.processors.StackInfoRenderer(),
                 structlog.processors.format_exc_info,
                 structlog.processors.UnicodeDecoder(),
-                structlog.processors.JSONRenderer()
+                structlog.processors.JSONRenderer(),
             ],
             context_class=dict,
             logger_factory=structlog.stdlib.LoggerFactory(),
@@ -46,7 +46,7 @@ def configure_logging(log_level: str = "INFO", json_format: bool = True) -> None
                 structlog.processors.TimeStamper(fmt="%Y-%m-%d %H:%M:%S"),
                 structlog.processors.StackInfoRenderer(),
                 structlog.processors.format_exc_info,
-                structlog.dev.ConsoleRenderer()
+                structlog.dev.ConsoleRenderer(),
             ],
             context_class=dict,
             logger_factory=structlog.stdlib.LoggerFactory(),
@@ -55,10 +55,11 @@ def configure_logging(log_level: str = "INFO", json_format: bool = True) -> None
 
     # Configure standard logging
     import logging
+
     logging.basicConfig(
         format="%(message)s",
         stream=sys.stdout,
-        level=getattr(logging, log_level.upper(), logging.INFO)
+        level=getattr(logging, log_level.upper(), logging.INFO),
     )
 
 

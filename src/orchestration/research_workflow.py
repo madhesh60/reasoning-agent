@@ -47,34 +47,34 @@ _EP = os.getenv(
 # Falls back to old GUID IDs if asst IDs not yet set
 _AGENTS = {
     "planner": {
-        "name":    os.getenv("PLANNER_AGENT_NAME",    "planner-agent"),
+        "name": os.getenv("PLANNER_AGENT_NAME", "planner-agent"),
         "version": os.getenv("PLANNER_AGENT_VERSION", "12"),
-        "id":      os.getenv("PLANNER_ASST_ID") or os.getenv("PLANNER_AGENT_ID") or "",
+        "id": os.getenv("PLANNER_ASST_ID") or os.getenv("PLANNER_AGENT_ID") or "",
     },
     "researcher": {
-        "name":    os.getenv("RESEARCHER_AGENT_NAME",    "researcher-agent"),
+        "name": os.getenv("RESEARCHER_AGENT_NAME", "researcher-agent"),
         "version": os.getenv("RESEARCHER_AGENT_VERSION", "12"),
-        "id":      os.getenv("RESEARCHER_ASST_ID") or os.getenv("RESEARCHER_AGENT_ID") or "",
+        "id": os.getenv("RESEARCHER_ASST_ID") or os.getenv("RESEARCHER_AGENT_ID") or "",
     },
     "industry_news": {
-        "name":    os.getenv("INDUSTRY_NEWS_AGENT_NAME",    "industry-news-trend-scanner"),
+        "name": os.getenv("INDUSTRY_NEWS_AGENT_NAME", "industry-news-trend-scanner"),
         "version": os.getenv("INDUSTRY_NEWS_AGENT_VERSION", "5"),
-        "id":      os.getenv("INDUSTRY_NEWS_ASST_ID") or os.getenv("INDUSTRY_NEWS_AGENT_ID") or "",
+        "id": os.getenv("INDUSTRY_NEWS_ASST_ID") or os.getenv("INDUSTRY_NEWS_AGENT_ID") or "",
     },
     "competitive": {
-        "name":    os.getenv("COMPETITIVE_AGENT_NAME",    "competitive-landscape-researcher"),
+        "name": os.getenv("COMPETITIVE_AGENT_NAME", "competitive-landscape-researcher"),
         "version": os.getenv("COMPETITIVE_AGENT_VERSION", "2"),
-        "id":      os.getenv("COMPETITIVE_ASST_ID") or os.getenv("COMPETITIVE_AGENT_ID") or "",
+        "id": os.getenv("COMPETITIVE_ASST_ID") or os.getenv("COMPETITIVE_AGENT_ID") or "",
     },
     "analyst": {
-        "name":    os.getenv("ANALYST_AGENT_NAME",    "analyst-agent"),
+        "name": os.getenv("ANALYST_AGENT_NAME", "analyst-agent"),
         "version": os.getenv("ANALYST_AGENT_VERSION", "4"),
-        "id":      os.getenv("ANALYST_ASST_ID") or os.getenv("ANALYST_AGENT_ID") or "",
+        "id": os.getenv("ANALYST_ASST_ID") or os.getenv("ANALYST_AGENT_ID") or "",
     },
     "writer": {
-        "name":    os.getenv("WRITER_AGENT_NAME",    "writer-agent"),
+        "name": os.getenv("WRITER_AGENT_NAME", "writer-agent"),
         "version": os.getenv("WRITER_AGENT_VERSION", "4"),
-        "id":      None,   # No tools — uses Responses API (faster, proven to work)
+        "id": None,  # No tools — uses Responses API (faster, proven to work)
     },
 }
 
@@ -94,9 +94,9 @@ def _responses_call(name: str, version: str, prompt: str) -> str:
         oc = client.get_openai_client()
         resp = oc.responses.create(
             input=[{"role": "user", "content": prompt}],
-            extra_body={"agent_reference": {
-                "name": name, "version": version, "type": "agent_reference"
-            }},
+            extra_body={
+                "agent_reference": {"name": name, "version": version, "type": "agent_reference"}
+            },
         )
         return resp.output_text
 
@@ -106,7 +106,7 @@ async def _call(role: str, prompt: str, retries: int = 2) -> str | None:
     Async wrapper with retries. Returns None on failure so pipeline continues.
     All agents use Responses API — the only API compatible with Foundry Workflow agents.
     """
-    cfg  = _AGENTS[role]
+    cfg = _AGENTS[role]
     loop = asyncio.get_running_loop()
 
     for attempt in range(1, retries + 2):
@@ -119,7 +119,7 @@ async def _call(role: str, prompt: str, retries: int = 2) -> str | None:
         except Exception as exc:
             logger.warning("agent_failed", role=role, attempt=attempt, error=str(exc)[:100])
             if attempt <= retries:
-                await asyncio.sleep(min(2 ** attempt, 10))
+                await asyncio.sleep(min(2**attempt, 10))
 
     logger.warning("agent_skipped", role=role)
     return None
@@ -143,8 +143,9 @@ def _parse_report(raw: str, query: str, elapsed: float) -> GeneratedReport:
                 ),
                 executive_summary=data.get("executive_summary", raw[:600]),
                 sections=[
-                    ReportSection(title=s.get("title",""), content=s.get("content",""))
-                    for s in data.get("sections", []) if isinstance(s, dict)
+                    ReportSection(title=s.get("title", ""), content=s.get("content", ""))
+                    for s in data.get("sections", [])
+                    if isinstance(s, dict)
                 ],
                 conclusions=data.get("conclusions", []),
                 recommendations=data.get("recommendations", []),
@@ -158,14 +159,20 @@ def _parse_report(raw: str, query: str, elapsed: float) -> GeneratedReport:
     for line in raw.split("\n"):
         if line.startswith("## "):
             if cur_title or cur_lines:
-                sections.append(ReportSection(title=cur_title or "Overview", content="\n".join(cur_lines).strip()))
+                sections.append(
+                    ReportSection(
+                        title=cur_title or "Overview", content="\n".join(cur_lines).strip()
+                    )
+                )
             cur_title, cur_lines = line[3:].strip(), []
         elif line.startswith("# "):
             cur_title = line[2:].strip()
         else:
             cur_lines.append(line)
     if cur_lines:
-        sections.append(ReportSection(title=cur_title or "Analysis", content="\n".join(cur_lines).strip()))
+        sections.append(
+            ReportSection(title=cur_title or "Analysis", content="\n".join(cur_lines).strip())
+        )
 
     exec_sum = next((s.content[:600] for s in sections if s.content), raw[:600])
     return GeneratedReport(
@@ -205,7 +212,7 @@ class ResearchWorkflow:
         max_retries: int = 3,
         memory_db_path: str = "memory.sqlite",
     ):
-        self.enable_a2a  = enable_a2a
+        self.enable_a2a = enable_a2a
         self.max_retries = max_retries
 
     async def execute_streaming(
@@ -216,16 +223,20 @@ class ResearchWorkflow:
         user_clarifications: str = "",
     ):
         stages = [
-            "planner", "researcher", "industry_news",
-            "competitive", "analyst", "writer",
+            "planner",
+            "researcher",
+            "industry_news",
+            "competitive",
+            "analyst",
+            "writer",
         ]
         labels = {
-            "planner":      "Planner: Decomposing query into research tasks...",
-            "researcher":   "Researcher: Fetching latest data from the web...",
-            "industry_news":"Industry News Scanner: Real-time trend signals...",
-            "competitive":  "Competitive Intel: Mapping the competitive landscape...",
-            "analyst":      "Analyst: Extracting insights and risk factors...",
-            "writer":       "Writer: Generating the structured report...",
+            "planner": "Planner: Decomposing query into research tasks...",
+            "researcher": "Researcher: Fetching latest data from the web...",
+            "industry_news": "Industry News Scanner: Real-time trend signals...",
+            "competitive": "Competitive Intel: Mapping the competitive landscape...",
+            "analyst": "Analyst: Extracting insights and risk factors...",
+            "writer": "Writer: Generating the structured report...",
         }
         for s in stages:
             yield {"stage": s, "status": "in_progress", "label": labels[s]}
@@ -258,7 +269,7 @@ class ResearchWorkflow:
         if user_clarifications:
             _prefix += user_clarifications + "\n"
 
-        context = ""   # Accumulated stage output passed stage-to-stage
+        context = ""  # Accumulated stage output passed stage-to-stage
         stages_ok: list[str] = []
         stages_failed: list[str] = []
 
@@ -367,8 +378,8 @@ class ResearchWorkflow:
             if writer_out:
                 stages_ok.append("writer")
                 elapsed = (datetime.utcnow() - t0).total_seconds()
-                report  = _parse_report(writer_out, query, elapsed)
-                path    = f"foundry_6agent ({'→'.join(stages_ok)})"
+                report = _parse_report(writer_out, query, elapsed)
+                path = f"foundry_6agent ({'→'.join(stages_ok)})"
 
                 logger.info("pipeline_complete", stages_ok=stages_ok, stages_failed=stages_failed)
                 return self._result(report, query, t0, path, stages_ok, stages_failed)
@@ -377,25 +388,25 @@ class ResearchWorkflow:
 
         # ── Fallback: Local Model ──────────────────────────────────────────────
         logger.info("using_local_fallback", stages_ok=stages_ok)
-        report  = await self._local_fallback(query, context, t0)
+        report = await self._local_fallback(query, context, t0)
         elapsed = (datetime.utcnow() - t0).total_seconds()
         return self._result(report, query, t0, "local_fallback", stages_ok, stages_failed)
 
     def _result(self, report, query, t0, path, ok_stages, fail_stages) -> dict:
         elapsed = (datetime.utcnow() - t0).total_seconds()
         return {
-            "status":                   "completed",
-            "query":                    query,
-            "report":                   report,
-            "path_used":                path,
-            "confidence_score":         report.metadata.confidence_score,
-            "processing_time_seconds":  elapsed,
+            "status": "completed",
+            "query": query,
+            "report": report,
+            "path_used": path,
+            "confidence_score": report.metadata.confidence_score,
+            "processing_time_seconds": elapsed,
             "metadata": {
-                "start_time":      t0.isoformat(),
-                "end_time":        datetime.utcnow().isoformat(),
+                "start_time": t0.isoformat(),
+                "end_time": datetime.utcnow().isoformat(),
                 "completed_tasks": ok_stages,
-                "failed_tasks":    fail_stages,
-                "errors":          [],
+                "failed_tasks": fail_stages,
+                "errors": [],
                 "confidence_scores": {"overall": report.metadata.confidence_score},
             },
         }
@@ -413,10 +424,14 @@ class ResearchWorkflow:
                 + "Include: Executive Summary, Current Trends, Competitive Landscape, "
                 "Opportunities & Risks, Strategic Recommendations, Resources."
             )
-            resp    = await llm.ainvoke([
-                SystemMessage(content="You are an expert research analyst. Write detailed, insightful reports."),
-                HumanMessage(content=prompt),
-            ])
+            resp = await llm.ainvoke(
+                [
+                    SystemMessage(
+                        content="You are an expert research analyst. Write detailed, insightful reports."
+                    ),
+                    HumanMessage(content=prompt),
+                ]
+            )
             elapsed = (datetime.utcnow() - t0).total_seconds()
             return _parse_report(resp.content, query, elapsed)
         except Exception as exc:
@@ -424,12 +439,15 @@ class ResearchWorkflow:
             elapsed = (datetime.utcnow() - t0).total_seconds()
             return GeneratedReport(
                 metadata=ReportMetadata(
-                    title=query[:80], report_id=str(uuid.uuid4())[:8],
-                    confidence_score=0.5, processing_time_seconds=elapsed,
+                    title=query[:80],
+                    report_id=str(uuid.uuid4())[:8],
+                    confidence_score=0.5,
+                    processing_time_seconds=elapsed,
                     generated_at=datetime.utcnow().isoformat(),
                 ),
                 executive_summary=f"Could not complete research on '{query}'. Check Azure credentials.",
-                sections=[], conclusions=[],
+                sections=[],
+                conclusions=[],
                 recommendations=["Run `az login` and verify AZURE_PROJECT_ENDPOINT in .env"],
                 citations=[],
             )

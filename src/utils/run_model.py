@@ -7,6 +7,7 @@ using the API key from .env (no Azure CLI login required).
 Run from project root:
     python -m src.utils.run_model
 """
+
 import os
 import sys
 from pathlib import Path
@@ -21,9 +22,9 @@ sys.path.insert(0, str(project_root))
 load_dotenv(project_root / ".env")
 
 # ── Connection details pulled from .env ─────────────────────────────────────
-ENDPOINT = os.environ["AZURE_OPENAI_ENDPOINT"]          # e.g. https://<res>.services.ai.azure.com/openai/v1
-API_KEY  = os.environ["AZURE_OPENAI_API_KEY"]
-DEPLOY   = os.environ.get("AZURE_OPENAI_DEPLOYMENT", "gpt-4o")
+ENDPOINT = os.environ["AZURE_OPENAI_ENDPOINT"]  # e.g. https://<res>.services.ai.azure.com/openai/v1
+API_KEY = os.environ["AZURE_OPENAI_API_KEY"]
+DEPLOY = os.environ.get("AZURE_OPENAI_DEPLOYMENT", "gpt-4o")
 
 # Normalise: strip /chat/completions if accidentally left in
 if ENDPOINT.endswith("/chat/completions"):
@@ -42,14 +43,13 @@ TEST_MESSAGES = [
     {
         "role": "system",
         "content": (
-            "You are a concise reasoning assistant. "
-            "Show your reasoning steps before answering."
+            "You are a concise reasoning assistant. " "Show your reasoning steps before answering."
         ),
     },
     {
         "role": "user",
         "content": "What are 3 main investment risks in the Indian EV market? "
-                   "Reason step-by-step then give a short final answer.",
+        "Reason step-by-step then give a short final answer.",
     },
 ]
 
